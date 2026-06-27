@@ -1,0 +1,151 @@
+import {Platform} from 'react-native';
+
+const fontFamily = Platform.select({
+  android: {
+    regular: 'sans-serif',
+    medium: 'sans-serif-medium',
+    bold: 'sans-serif',
+    light: 'sans-serif-light',
+    thin: 'sans-serif-thin',
+    black: 'sans-serif-black',
+  },
+  default: {
+    regular: 'System',
+    medium: 'System',
+    bold: 'System',
+    light: 'System',
+    thin: 'System',
+    black: 'System',
+  },
+});
+
+export const typography = {
+  displayLarge: {
+    fontFamily: fontFamily?.regular,
+    fontSize: 57,
+    lineHeight: 64,
+    letterSpacing: -0.25,
+    fontWeight: '400' as const,
+  },
+  displayMedium: {
+    fontFamily: fontFamily?.regular,
+    fontSize: 45,
+    lineHeight: 52,
+    letterSpacing: 0,
+    fontWeight: '400' as const,
+  },
+  displaySmall: {
+    fontFamily: fontFamily?.regular,
+    fontSize: 36,
+    lineHeight: 44,
+    letterSpacing: 0,
+    fontWeight: '400' as const,
+  },
+  headlineLarge: {
+    fontFamily: fontFamily?.regular,
+    fontSize: 32,
+    lineHeight: 40,
+    letterSpacing: 0,
+    fontWeight: '400' as const,
+  },
+  headlineMedium: {
+    fontFamily: fontFamily?.regular,
+    fontSize: 28,
+    lineHeight: 36,
+    letterSpacing: 0,
+    fontWeight: '400' as const,
+  },
+  headlineSmall: {
+    fontFamily: fontFamily?.regular,
+    fontSize: 24,
+    lineHeight: 32,
+    letterSpacing: 0,
+    fontWeight: '400' as const,
+  },
+  titleLarge: {
+    fontFamily: fontFamily?.regular,
+    fontSize: 22,
+    lineHeight: 28,
+    letterSpacing: 0,
+    fontWeight: '600' as const,
+  },
+  titleMedium: {
+    fontFamily: fontFamily?.medium,
+    fontSize: 16,
+    lineHeight: 24,
+    letterSpacing: 0.15,
+    fontWeight: '600' as const,
+  },
+  titleSmall: {
+    fontFamily: fontFamily?.medium,
+    fontSize: 14,
+    lineHeight: 20,
+    letterSpacing: 0.1,
+    fontWeight: '600' as const,
+  },
+  labelLarge: {
+    fontFamily: fontFamily?.medium,
+    fontSize: 14,
+    lineHeight: 20,
+    letterSpacing: 0.1,
+    fontWeight: '500' as const,
+  },
+  labelMedium: {
+    fontFamily: fontFamily?.medium,
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: 0.5,
+    fontWeight: '500' as const,
+  },
+  labelSmall: {
+    fontFamily: fontFamily?.medium,
+    fontSize: 11,
+    lineHeight: 16,
+    letterSpacing: 0.5,
+    fontWeight: '500' as const,
+  },
+  bodyLarge: {
+    fontFamily: fontFamily?.regular,
+    fontSize: 16,
+    lineHeight: 24,
+    letterSpacing: 0.15,
+    fontWeight: '400' as const,
+  },
+  bodyMedium: {
+    fontFamily: fontFamily?.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    letterSpacing: 0.25,
+    fontWeight: '400' as const,
+  },
+  bodySmall: {
+    fontFamily: fontFamily?.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: 0.4,
+    fontWeight: '400' as const,
+  },
+  numericLarge: {
+    fontFamily: fontFamily?.bold,
+    fontSize: 36,
+    lineHeight: 44,
+    letterSpacing: -1,
+    fontWeight: '700' as const,
+  },
+  numericMedium: {
+    fontFamily: fontFamily?.bold,
+    fontSize: 24,
+    lineHeight: 32,
+    letterSpacing: -0.5,
+    fontWeight: '700' as const,
+  },
+  numericSmall: {
+    fontFamily: fontFamily?.bold,
+    fontSize: 18,
+    lineHeight: 24,
+    letterSpacing: -0.25,
+    fontWeight: '700' as const,
+  },
+} as const;
+
+export type TypographyKey = keyof typeof typography;
