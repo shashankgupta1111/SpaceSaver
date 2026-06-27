@@ -5,7 +5,6 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Alert,
   Image,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -20,6 +19,7 @@ import {StorageService} from '../../shared/services/StorageService';
 import {HistoryItem} from '../../app/navigation/types';
 import EmptyState from '../../shared/components/EmptyState';
 import HeaderBar from '../../shared/components/HeaderBar';
+import {useAlert} from '../../shared/components/AlertProvider';
 import Card from '../../shared/components/Card';
 import {format} from 'date-fns';
 
@@ -168,6 +168,7 @@ export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
+  const alert = useAlert();
 
   const [filter, setFilter] = useState<FilterType>('all');
 
@@ -185,26 +186,35 @@ export default function HistoryScreen() {
 
   const handleDelete = useCallback(
     (id: string) => {
-      Alert.alert('Delete Record', 'Remove this item from history?', [
-        {text: 'Cancel', style: 'cancel'},
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            HistoryService.delete(id);
-            queryClient.invalidateQueries({queryKey: ['history']});
+      alert({
+        title: 'Delete Record',
+        message: 'Remove this item from history?',
+        type: 'warning',
+        icon: 'trash-can-outline',
+        buttons: [
+          {text: 'Cancel', style: 'cancel'},
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => {
+              HistoryService.delete(id);
+              queryClient.invalidateQueries({queryKey: ['history']});
+            },
           },
-        },
-      ]);
+        ],
+      });
     },
-    [queryClient],
+    [queryClient, alert],
   );
 
   const handleClearAll = () => {
-    Alert.alert(
-      'Clear History',
-      'This will remove all compression history records. This cannot be undone.',
-      [
+    alert({
+      title: 'Clear History',
+      message:
+        'This will remove all compression history records. This cannot be undone.',
+      type: 'warning',
+      icon: 'trash-can-outline',
+      buttons: [
         {text: 'Cancel', style: 'cancel'},
         {
           text: 'Clear All',
@@ -215,7 +225,7 @@ export default function HistoryScreen() {
           },
         },
       ],
-    );
+    });
   };
 
   return (

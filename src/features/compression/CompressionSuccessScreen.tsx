@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Modal,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -25,11 +24,13 @@ import Animated, {
 } from 'react-native-reanimated';
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import {CameraRoll} from '@react-native-camera-roll/camera-roll';
 import {useTheme} from '../../app/theme/ThemeContext';
 import {RootStackParamList, CompressionResult} from '../../app/navigation/types';
 import {StorageService} from '../../shared/services/StorageService';
 import {SettingsService} from '../../shared/services/SettingsService';
 import {CompressionService} from '../../shared/services/CompressionService';
+import {useAlert} from '../../shared/components/AlertProvider';
 import Card from '../../shared/components/Card';
 import AnimatedButton from '../../shared/components/AnimatedButton';
 
@@ -120,6 +121,7 @@ export default function CompressionSuccessScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const alert = useAlert();
   const {results, type} = route.params;
 
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -151,23 +153,60 @@ export default function CompressionSuccessScreen() {
     setSaving(true);
     setShowSaveModal(false);
     try {
+      // 1. Write every compressed file into the shared gallery (MediaStore).
       for (const result of results) {
         await CompressionService.moveToMediaStore(result.compressedUri, type);
-        if (option === 'replace') {
+      }
+
+      // 2. For "replace", remove the originals from the gallery. On Android 11+
+      //    this needs a MediaStore delete request (content:// URIs) which shows
+      //    a single system confirmation dialog for the whole batch — RNFS.unlink
+      //    cannot touch shared-storage media under scoped storage.
+      let deletedCount = 0;
+      if (option === 'replace') {
+        const originalUris = results
+          .map(r => r.originalUri)
+          .filter(uri => uri && uri.startsWith('content://'));
+        if (originalUris.length > 0) {
           try {
-            await StorageService.deleteFile(result.originalUri);
-          } catch {/* file may already be gone */}
+            await CameraRoll.deletePhotos(originalUris);
+            deletedCount = originalUris.length;
+          } catch {
+            // User dismissed the system delete dialog, or deletion failed.
+            // The compressed copies are already saved, so fall through and
+            // report that the originals were kept.
+          }
         }
       }
-      Alert.alert(
-        'Saved!',
-        option === 'new'
-          ? `${results.length} compressed file${results.length > 1 ? 's' : ''} saved to SpaceSaver folder.`
-          : `${results.length} file${results.length > 1 ? 's' : ''} replaced with compressed version.`,
-        [{text: 'Done', onPress: () => navigation.navigate('Main', {screen: 'Home'})}],
-      );
+
+      const count = results.length;
+      const noun = `file${count > 1 ? 's' : ''}`;
+      let message: string;
+      if (option === 'new') {
+        message = `${count} compressed ${noun} saved to your gallery (SpaceSaver album).`;
+      } else if (deletedCount > 0) {
+        message = `${count} ${noun} saved and ${deletedCount} original ${deletedCount > 1 ? 'files' : 'file'} removed.`;
+      } else {
+        message = `${count} compressed ${noun} saved to your gallery. Originals were kept.`;
+      }
+
+      alert({
+        title: 'Saved!',
+        message,
+        type: 'success',
+        buttons: [
+          {
+            text: 'Done',
+            onPress: () => navigation.navigate('Main', {screen: 'Home'}),
+          },
+        ],
+      });
     } catch (err) {
-      Alert.alert('Error', 'Failed to save files. Please try again.');
+      alert({
+        title: 'Error',
+        message: 'Failed to save files. Please try again.',
+        type: 'error',
+      });
     } finally {
       setSaving(false);
     }
@@ -474,18 +513,25 @@ export default function CompressionSuccessScreen() {
               ]}
               onPress={() => {
                 setShowSaveModal(false);
-                Alert.alert(
-                  'Replace Original?',
-                  'The original file will be permanently removed.',
-                  [
-                    {text: 'Cancel', style: 'cancel', onPress: () => setShowSaveModal(true)},
+                alert({
+                  title: 'Replace Original?',
+                  message:
+                    'The original file will be permanently removed from your gallery.',
+                  type: 'warning',
+                  icon: 'swap-horizontal',
+                  buttons: [
+                    {
+                      text: 'Cancel',
+                      style: 'cancel',
+                      onPress: () => setShowSaveModal(true),
+                    },
                     {
                       text: 'Replace',
                       style: 'destructive',
                       onPress: () => handleSave('replace'),
                     },
                   ],
-                );
+                });
               }}>
               <View
                 style={[

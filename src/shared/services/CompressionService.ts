@@ -1,5 +1,6 @@
 import {Image as ImageCompressor, Video as VideoCompressor} from 'react-native-compressor';
 import RNFS from 'react-native-fs';
+import {CameraRoll} from '@react-native-camera-roll/camera-roll';
 import {CompressionOptions, CompressionResult} from '../../app/navigation/types';
 import {StorageService} from './StorageService';
 import {HistoryService} from './HistoryService';
@@ -207,20 +208,37 @@ class CompressionServiceClass {
     }
   }
 
+  /**
+   * Persists a freshly-compressed file (currently sitting in the app cache)
+   * into the device's shared media library so it shows up in the Gallery
+   * globally — not just inside the app's private folder.
+   *
+   * Uses CameraRoll.saveAsset which writes through MediaStore (scoped-storage
+   * safe on Android 10+, targetSdk 35). The temporary cache copy is removed
+   * afterwards so we don't leave duplicates behind.
+   */
   async moveToMediaStore(
     uri: string,
     type: 'image' | 'video',
   ): Promise<string> {
-    const fileName = uri.split('/').pop() ?? `compressed_${Date.now()}`;
-    const destDir =
-      type === 'image'
-        ? `${RNFS.PicturesDirectoryPath}/SpaceSaver`
-        : `${RNFS.DownloadDirectoryPath}/SpaceSaver`;
+    const sourceUri = uri.startsWith('file://') ? uri : `file://${uri}`;
 
-    await RNFS.mkdir(destDir);
-    const destPath = `${destDir}/${fileName}`;
-    await RNFS.copyFile(uri, destPath);
-    return `file://${destPath}`;
+    const asset = await CameraRoll.saveAsset(sourceUri, {
+      type: type === 'image' ? 'photo' : 'video',
+      album: 'SpaceSaver',
+    });
+
+    // Clean up the temporary cached file now that it lives in the gallery.
+    try {
+      const cachePath = uri.startsWith('file://') ? uri.slice(7) : uri;
+      if (await RNFS.exists(cachePath)) {
+        await RNFS.unlink(cachePath);
+      }
+    } catch {
+      /* non-fatal: the temp file will be cleared with the cache anyway */
+    }
+
+    return asset.node.image.uri;
   }
 }
 

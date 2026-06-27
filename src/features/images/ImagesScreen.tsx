@@ -8,7 +8,6 @@ import {
   Dimensions,
   Image,
   TextInput,
-  Alert,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useNavigation} from '@react-navigation/native';
@@ -29,15 +28,22 @@ import {useTheme} from '../../app/theme/ThemeContext';
 import {RootStackParamList} from '../../app/navigation/types';
 import EmptyState from '../../shared/components/EmptyState';
 import AnimatedButton from '../../shared/components/AnimatedButton';
+import SortFilterSheet from '../../shared/components/SortFilterSheet';
 import {StorageService} from '../../shared/services/StorageService';
+import {
+  SortOrder,
+  MediaFilter,
+  DEFAULT_FILTER,
+  DEFAULT_SORT,
+  isFilterActive,
+  sortAndFilter,
+} from '../../shared/utils/mediaSortFilter';
 
 const {width: SCREEN_WIDTH} = Dimensions.get('window');
 const COLUMNS = 3;
 const ITEM_SIZE = (SCREEN_WIDTH - 40 - (COLUMNS - 1) * 3) / COLUMNS;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-
-type SortOrder = 'date_desc' | 'date_asc' | 'size_desc' | 'size_asc';
 
 function ImageTile({
   photo,
@@ -116,11 +122,13 @@ export default function ImagesScreen() {
 
   const [selectedUris, setSelectedUris] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('date_desc');
+  const [sortOrder, setSortOrder] = useState<SortOrder>(DEFAULT_SORT);
+  const [filter, setFilter] = useState<MediaFilter>(DEFAULT_FILTER);
   const [showSearch, setShowSearch] = useState(false);
+  const [showSortFilter, setShowSortFilter] = useState(false);
 
   const {data: photos, isLoading, refetch} = useQuery({
-    queryKey: ['images', sortOrder],
+    queryKey: ['images'],
     queryFn: async () => {
       const perm = await request(
         PERMISSIONS.ANDROID.READ_MEDIA_IMAGES,
@@ -166,27 +174,14 @@ export default function ImagesScreen() {
     });
   };
 
-  const filteredPhotos = (photos ?? []).filter(p =>
-    searchQuery
-      ? (p.node.image.filename ?? '').toLowerCase().includes(searchQuery.toLowerCase())
-      : true,
-  );
-
-  const sortedPhotos = [...filteredPhotos].sort((a, b) => {
-    switch (sortOrder) {
-      case 'date_desc':
-        return b.node.timestamp - a.node.timestamp;
-      case 'date_asc':
-        return a.node.timestamp - b.node.timestamp;
-      case 'size_desc':
-        return (b.node.image.fileSize ?? 0) - (a.node.image.fileSize ?? 0);
-      case 'size_asc':
-        return (a.node.image.fileSize ?? 0) - (b.node.image.fileSize ?? 0);
-      default:
-        return 0;
-    }
+  const sortedPhotos = sortAndFilter(photos ?? [], {
+    type: 'image',
+    searchQuery,
+    sortOrder,
+    filter,
   });
 
+  const filterActive = isFilterActive(filter);
   const selectedCount = selectedUris.size;
 
   return (
@@ -232,7 +227,9 @@ export default function ImagesScreen() {
                     theme.typography.bodySmall,
                     {color: theme.colors.textSecondary},
                   ]}>
-                  {photos.length} photos
+                  {filterActive || searchQuery
+                    ? `${sortedPhotos.length} of ${photos.length} photos`
+                    : `${photos.length} photos`}
                 </Text>
               )}
             </View>
@@ -244,16 +241,19 @@ export default function ImagesScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.iconBtn, {backgroundColor: theme.colors.surfaceVariant}]}
-                onPress={() => {
-                  Alert.alert('Sort', 'Choose sort order', [
-                    {text: 'Newest First', onPress: () => setSortOrder('date_desc')},
-                    {text: 'Oldest First', onPress: () => setSortOrder('date_asc')},
-                    {text: 'Largest First', onPress: () => setSortOrder('size_desc')},
-                    {text: 'Smallest First', onPress: () => setSortOrder('size_asc')},
-                    {text: 'Cancel', style: 'cancel'},
-                  ]);
-                }}>
-                <Icon name="sort" size={20} color={theme.colors.text} />
+                onPress={() => setShowSortFilter(true)}>
+                <Icon name="tune-variant" size={20} color={theme.colors.text} />
+                {filterActive && (
+                  <View
+                    style={[
+                      styles.filterDot,
+                      {
+                        backgroundColor: theme.colors.primary,
+                        borderColor: theme.colors.background,
+                      },
+                    ]}
+                  />
+                )}
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.iconBtn, {backgroundColor: theme.colors.surfaceVariant}]}
@@ -350,6 +350,16 @@ export default function ImagesScreen() {
           </AnimatedButton>
         </Animated.View>
       )}
+
+      <SortFilterSheet
+        visible={showSortFilter}
+        type="image"
+        sortOrder={sortOrder}
+        filter={filter}
+        onChangeSort={setSortOrder}
+        onChangeFilter={setFilter}
+        onClose={() => setShowSortFilter(false)}
+      />
     </View>
   );
 }
@@ -375,6 +385,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  filterDot: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    borderWidth: 1.5,
   },
   searchBar: {
     flexDirection: 'row',

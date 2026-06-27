@@ -4,6 +4,7 @@ import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {StyleSheet} from 'react-native';
 
 import {ThemeProvider} from './theme/ThemeContext';
+import {AlertProvider} from '../shared/components/AlertProvider';
 import RootNavigator from './navigation/RootNavigator';
 
 const queryClient = new QueryClient({
@@ -20,7 +21,9 @@ export default function App() {
     <GestureHandlerRootView style={styles.container}>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
-          <RootNavigator />
+          <AlertProvider>
+            <RootNavigator />
+          </AlertProvider>
         </ThemeProvider>
       </QueryClientProvider>
     </GestureHandlerRootView>

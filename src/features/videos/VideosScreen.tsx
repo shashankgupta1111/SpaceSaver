@@ -7,7 +7,7 @@ import {
   FlatList,
   Dimensions,
   Image,
-  Alert,
+  TextInput,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useNavigation} from '@react-navigation/native';
@@ -23,6 +23,15 @@ import {RootStackParamList} from '../../app/navigation/types';
 import {StorageService} from '../../shared/services/StorageService';
 import EmptyState from '../../shared/components/EmptyState';
 import AnimatedButton from '../../shared/components/AnimatedButton';
+import SortFilterSheet from '../../shared/components/SortFilterSheet';
+import {
+  SortOrder,
+  MediaFilter,
+  DEFAULT_FILTER,
+  DEFAULT_SORT,
+  isFilterActive,
+  sortAndFilter,
+} from '../../shared/utils/mediaSortFilter';
 
 const {width: SCREEN_WIDTH} = Dimensions.get('window');
 const COLUMNS = 2;
@@ -133,6 +142,11 @@ export default function VideosScreen() {
   const navigation = useNavigation<Nav>();
 
   const [selectedUris, setSelectedUris] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortOrder, setSortOrder] = useState<SortOrder>(DEFAULT_SORT);
+  const [filter, setFilter] = useState<MediaFilter>(DEFAULT_FILTER);
+  const [showSearch, setShowSearch] = useState(false);
+  const [showSortFilter, setShowSortFilter] = useState(false);
 
   const {data: videos, isLoading, refetch} = useQuery({
     queryKey: ['videos'],
@@ -165,6 +179,15 @@ export default function VideosScreen() {
     });
   };
 
+  const sortedVideos = sortAndFilter(videos ?? [], {
+    type: 'video',
+    searchQuery,
+    sortOrder,
+    filter,
+  });
+
+  const filterActive = isFilterActive(filter);
+
   const totalSize = videos
     ? Array.from(selectedUris).reduce((acc, uri) => {
         const found = videos.find(v => v.node.image.uri === uri);
@@ -180,38 +203,87 @@ export default function VideosScreen() {
           styles.header,
           {paddingTop: insets.top + 8, backgroundColor: theme.colors.background},
         ]}>
-        <View>
-          <Text
-            style={[theme.typography.titleLarge, {color: theme.colors.text}]}>
-            Videos
-          </Text>
-          {videos && (
-            <Text
+        {showSearch ? (
+          <View style={[styles.searchBar, {backgroundColor: theme.colors.inputBackground}]}>
+            <Icon name="magnify" size={20} color={theme.colors.textSecondary} />
+            <TextInput
               style={[
-                theme.typography.bodySmall,
-                {color: theme.colors.textSecondary},
-              ]}>
-              {videos.length} videos
-            </Text>
-          )}
-        </View>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={[styles.iconBtn, {backgroundColor: theme.colors.surfaceVariant}]}
-            onPress={() => {
-              if (selectedUris.size === (videos?.length ?? 0)) {
-                setSelectedUris(new Set());
-              } else {
-                setSelectedUris(new Set(videos?.map(v => v.node.image.uri) ?? []));
-              }
-            }}>
-            <Icon
-              name="checkbox-multiple-blank-outline"
-              size={20}
-              color={theme.colors.text}
+                styles.searchInput,
+                {color: theme.colors.text, ...theme.typography.bodyMedium},
+              ]}
+              placeholder="Search videos..."
+              placeholderTextColor={theme.colors.textTertiary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
             />
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              onPress={() => {
+                setShowSearch(false);
+                setSearchQuery('');
+              }}>
+              <Icon name="close" size={20} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.headerTop}>
+            <View>
+              <Text
+                style={[theme.typography.titleLarge, {color: theme.colors.text}]}>
+                Videos
+              </Text>
+              {videos && (
+                <Text
+                  style={[
+                    theme.typography.bodySmall,
+                    {color: theme.colors.textSecondary},
+                  ]}>
+                  {filterActive || searchQuery
+                    ? `${sortedVideos.length} of ${videos.length} videos`
+                    : `${videos.length} videos`}
+                </Text>
+              )}
+            </View>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={[styles.iconBtn, {backgroundColor: theme.colors.surfaceVariant}]}
+                onPress={() => setShowSearch(true)}>
+                <Icon name="magnify" size={20} color={theme.colors.text} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.iconBtn, {backgroundColor: theme.colors.surfaceVariant}]}
+                onPress={() => setShowSortFilter(true)}>
+                <Icon name="tune-variant" size={20} color={theme.colors.text} />
+                {filterActive && (
+                  <View
+                    style={[
+                      styles.filterDot,
+                      {
+                        backgroundColor: theme.colors.primary,
+                        borderColor: theme.colors.background,
+                      },
+                    ]}
+                  />
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.iconBtn, {backgroundColor: theme.colors.surfaceVariant}]}
+                onPress={() => {
+                  if (selectedUris.size === (videos?.length ?? 0)) {
+                    setSelectedUris(new Set());
+                  } else {
+                    setSelectedUris(new Set(videos?.map(v => v.node.image.uri) ?? []));
+                  }
+                }}>
+                <Icon
+                  name="checkbox-multiple-blank-outline"
+                  size={20}
+                  color={theme.colors.text}
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </View>
 
       {/* Selection bar */}
@@ -236,7 +308,7 @@ export default function VideosScreen() {
       )}
 
       {/* Grid */}
-      {!isLoading && (videos?.length ?? 0) === 0 ? (
+      {!isLoading && sortedVideos.length === 0 ? (
         <EmptyState
           type="videos"
           title="No Videos Found"
@@ -246,7 +318,7 @@ export default function VideosScreen() {
         />
       ) : (
         <FlatList
-          data={videos ?? []}
+          data={sortedVideos}
           numColumns={COLUMNS}
           keyExtractor={item => item.node.image.uri}
           contentContainerStyle={[
@@ -285,6 +357,16 @@ export default function VideosScreen() {
           </AnimatedButton>
         </Animated.View>
       )}
+
+      <SortFilterSheet
+        visible={showSortFilter}
+        type="video"
+        sortOrder={sortOrder}
+        filter={filter}
+        onChangeSort={setSortOrder}
+        onChangeFilter={setFilter}
+        onClose={() => setShowSortFilter(false)}
+      />
     </View>
   );
 }
@@ -292,11 +374,13 @@ export default function VideosScreen() {
 const styles = StyleSheet.create({
   root: {flex: 1},
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: 20,
     paddingBottom: 12,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   headerActions: {flexDirection: 'row', gap: 8},
   iconBtn: {
@@ -305,6 +389,27 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  filterDot: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    borderWidth: 1.5,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    padding: 0,
   },
   selectionBar: {
     flexDirection: 'row',

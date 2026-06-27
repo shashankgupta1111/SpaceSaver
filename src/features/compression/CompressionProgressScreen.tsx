@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   BackHandler,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -32,6 +31,7 @@ import {CompressionService} from '../../shared/services/CompressionService';
 import {HistoryService} from '../../shared/services/HistoryService';
 import {StorageService} from '../../shared/services/StorageService';
 import {ForegroundServiceBridge} from '../../shared/services/ForegroundServiceBridge';
+import {useAlert} from '../../shared/components/AlertProvider';
 import CircularProgress from '../../shared/components/CircularProgress';
 import Card from '../../shared/components/Card';
 
@@ -59,6 +59,7 @@ export default function CompressionProgressScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const alert = useAlert();
   const {type, uris, options} = route.params;
 
   const cancelToken = useRef({cancelled: false});
@@ -210,10 +211,12 @@ export default function CompressionProgressScreen() {
   };
 
   const handleCancel = () => {
-    Alert.alert(
-      'Cancel Compression?',
-      `${completedResults.length} of ${uris.length} files have been compressed.`,
-      [
+    alert({
+      title: 'Cancel Compression?',
+      message: `${completedResults.length} of ${uris.length} files have been compressed.`,
+      type: 'warning',
+      icon: 'progress-close',
+      buttons: [
         {text: 'Continue', style: 'cancel'},
         {
           text: 'Cancel',
@@ -234,7 +237,7 @@ export default function CompressionProgressScreen() {
           },
         },
       ],
-    );
+    });
   };
 
   const pulseAnim = useSharedValue(1);

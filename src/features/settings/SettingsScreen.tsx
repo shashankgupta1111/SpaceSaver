@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Switch,
-  Alert,
   Linking,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -16,6 +15,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {useTheme} from '../../app/theme/ThemeContext';
 import {SettingsService, SaveOption} from '../../shared/services/SettingsService';
 import {HistoryService} from '../../shared/services/HistoryService';
+import {useAlert} from '../../shared/components/AlertProvider';
 import Card from '../../shared/components/Card';
 
 function SettingsRow({
@@ -98,6 +98,7 @@ function SectionHeader({title}: {title: string}) {
 export default function SettingsScreen() {
   const {theme, themeMode, setThemeMode} = useTheme();
   const insets = useSafeAreaInsets();
+  const alert = useAlert();
 
   const [showNotifications, setShowNotifications] = useState(
     SettingsService.get('showNotifications'),
@@ -107,48 +108,51 @@ export default function SettingsScreen() {
   );
 
   const handleThemePress = () => {
-    Alert.alert('Theme', 'Choose your preferred theme', [
-      {
-        text: 'Light',
-        onPress: () => setThemeMode('light'),
-      },
-      {
-        text: 'Dark',
-        onPress: () => setThemeMode('dark'),
-      },
-      {
-        text: 'Follow System',
-        onPress: () => setThemeMode('system'),
-      },
-      {text: 'Cancel', style: 'cancel'},
-    ]);
+    alert({
+      title: 'Theme',
+      message: 'Choose your preferred theme',
+      type: 'info',
+      icon: 'palette',
+      buttons: [
+        {text: 'Light', onPress: () => setThemeMode('light')},
+        {text: 'Dark', onPress: () => setThemeMode('dark')},
+        {text: 'Follow System', onPress: () => setThemeMode('system')},
+        {text: 'Cancel', style: 'cancel'},
+      ],
+    });
   };
 
   const handleSaveOptionPress = () => {
-    Alert.alert('Default Save Option', 'Choose what happens after compression', [
-      {
-        text: 'Save as New Copy',
-        onPress: () => {
-          setSaveOption('new');
-          SettingsService.set('defaultSaveOption', 'new');
+    alert({
+      title: 'Default Save Option',
+      message: 'Choose what happens after compression',
+      type: 'info',
+      icon: 'content-save-cog',
+      buttons: [
+        {
+          text: 'Save as New Copy',
+          onPress: () => {
+            setSaveOption('new');
+            SettingsService.set('defaultSaveOption', 'new');
+          },
         },
-      },
-      {
-        text: 'Replace Original',
-        onPress: () => {
-          setSaveOption('replace');
-          SettingsService.set('defaultSaveOption', 'replace');
+        {
+          text: 'Replace Original',
+          onPress: () => {
+            setSaveOption('replace');
+            SettingsService.set('defaultSaveOption', 'replace');
+          },
         },
-      },
-      {
-        text: 'Ask Every Time',
-        onPress: () => {
-          setSaveOption('ask');
-          SettingsService.set('defaultSaveOption', 'ask');
+        {
+          text: 'Ask Every Time',
+          onPress: () => {
+            setSaveOption('ask');
+            SettingsService.set('defaultSaveOption', 'ask');
+          },
         },
-      },
-      {text: 'Cancel', style: 'cancel'},
-    ]);
+        {text: 'Cancel', style: 'cancel'},
+      ],
+    });
   };
 
   const themeLabel =
@@ -301,10 +305,11 @@ export default function SettingsScreen() {
               label="Clear Compression History"
               danger
               onPress={() => {
-                Alert.alert(
-                  'Clear History',
-                  'This will remove all compression records.',
-                  [
+                alert({
+                  title: 'Clear History',
+                  message: 'This will remove all compression records.',
+                  type: 'warning',
+                  buttons: [
                     {text: 'Cancel', style: 'cancel'},
                     {
                       text: 'Clear',
@@ -312,7 +317,7 @@ export default function SettingsScreen() {
                       onPress: () => HistoryService.clearAll(),
                     },
                   ],
-                );
+                });
               }}
             />
           </Card>
