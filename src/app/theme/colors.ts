@@ -101,7 +101,7 @@ export const lightColors = {
   gradientCard: ['rgba(91,95,239,0.08)', 'rgba(124,77,255,0.04)'] as [string, string],
 };
 
-export const darkColors: typeof lightColors = {
+export const darkColors: ColorScheme = {
   primary: palette.primaryLight,
   primaryLight: '#BBBEFF',
   primaryDark: palette.primary,
@@ -158,4 +158,14 @@ export const darkColors: typeof lightColors = {
   gradientCard: ['rgba(139,143,245,0.12)', 'rgba(201,164,255,0.06)'] as [string, string],
 };
 
-export type ColorScheme = typeof lightColors;
+// Values widen to `string` so light/dark palettes (different hex values) share
+// one shape. `typeof lightColors` alone would pin each value to a literal hex
+// and reject darkColors' different values. Gradient keys keep their tuple shape.
+export type ColorScheme = {
+  [K in keyof typeof lightColors]: (typeof lightColors)[K] extends readonly [
+    string,
+    string,
+  ]
+    ? [string, string]
+    : string;
+};

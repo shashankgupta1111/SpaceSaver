@@ -1,4 +1,4 @@
-import React, {useState, useCallback, useRef} from 'react';
+import React, {useState, useCallback, useMemo} from 'react';
 import {
   View,
   Text,
@@ -16,18 +16,19 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
-  withTiming,
+  FadeIn,
   FadeInDown,
 } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import {useQuery} from '@tanstack/react-query';
+import {useInfiniteQuery} from '@tanstack/react-query';
 import {CameraRoll, PhotoIdentifier} from '@react-native-camera-roll/camera-roll';
-import {check, request, PERMISSIONS, RESULTS} from 'react-native-permissions';
+import {request, PERMISSIONS, RESULTS} from 'react-native-permissions';
 
 import {useTheme} from '../../app/theme/ThemeContext';
 import {RootStackParamList} from '../../app/navigation/types';
 import EmptyState from '../../shared/components/EmptyState';
 import AnimatedButton from '../../shared/components/AnimatedButton';
+import Loader from '../../shared/components/Loader';
 import SortFilterSheet from '../../shared/components/SortFilterSheet';
 import {StorageService} from '../../shared/services/StorageService';
 import {
@@ -41,20 +42,21 @@ import {
 
 const {width: SCREEN_WIDTH} = Dimensions.get('window');
 const COLUMNS = 3;
-const ITEM_SIZE = (SCREEN_WIDTH - 40 - (COLUMNS - 1) * 3) / COLUMNS;
+const GRID_GAP = 3;
+const ITEM_SIZE = (SCREEN_WIDTH - 40 - (COLUMNS - 1) * GRID_GAP) / COLUMNS;
+const ROW_HEIGHT = ITEM_SIZE + GRID_GAP;
+const PAGE_SIZE = 60;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-function ImageTile({
+const ImageTile = React.memo(function ImageTile({
   photo,
   isSelected,
   onToggle,
-  index,
 }: {
   photo: PhotoIdentifier;
   isSelected: boolean;
   onToggle: (uri: string) => void;
-  index: number;
 }) {
   const {theme} = useTheme();
   const scale = useSharedValue(1);
@@ -72,7 +74,7 @@ function ImageTile({
 
   return (
     <Animated.View
-      entering={FadeInDown.delay(index * 20).springify()}
+      entering={FadeIn.duration(180)}
       style={[styles.tile, animStyle]}>
       <TouchableOpacity
         onPress={handlePress}
@@ -82,6 +84,10 @@ function ImageTile({
           source={{uri: photo.node.image.uri}}
           style={[styles.tileImage]}
           resizeMode="cover"
+          // Downsample to the tile size during decode. Without this, Fresco can
+          // decode full-res photos (a 12MP HEIC ≈ 48MB each) and scrolling the
+          // grid OOM-crashes the app on devices with large/HEIC photos.
+          resizeMethod="resize"
         />
         {isSelected && (
           <View
@@ -113,7 +119,7 @@ function ImageTile({
       </TouchableOpacity>
     </Animated.View>
   );
-}
+});
 
 export default function ImagesScreen() {
   const {theme} = useTheme();
@@ -127,24 +133,46 @@ export default function ImagesScreen() {
   const [showSearch, setShowSearch] = useState(false);
   const [showSortFilter, setShowSortFilter] = useState(false);
 
-  const {data: photos, isLoading, refetch} = useQuery({
+  const {
+    data,
+    isLoading,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ['images'],
-    queryFn: async () => {
-      const perm = await request(
-        PERMISSIONS.ANDROID.READ_MEDIA_IMAGES,
-      );
-      if (perm !== RESULTS.GRANTED) {
-        throw new Error('Permission denied');
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({pageParam}) => {
+      // Only prompt on the first page; later pages assume permission is held.
+      if (!pageParam) {
+        const perm = await request(PERMISSIONS.ANDROID.READ_MEDIA_IMAGES);
+        if (perm !== RESULTS.GRANTED) {
+          throw new Error('Permission denied');
+        }
       }
-      const result = await CameraRoll.getPhotos({
-        first: 500,
+      return CameraRoll.getPhotos({
+        first: PAGE_SIZE,
+        after: pageParam,
         assetType: 'Photos',
         include: ['fileSize', 'filename', 'imageSize'],
       });
-      return result.edges;
     },
+    getNextPageParam: last =>
+      last.page_info.has_next_page ? last.page_info.end_cursor : undefined,
     retry: false,
   });
+
+  const photos = useMemo(
+    () => data?.pages.flatMap(p => p.edges) ?? [],
+    [data],
+  );
+
+  const loadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const toggleSelection = useCallback((uri: string) => {
     setSelectedUris(prev => {
@@ -221,7 +249,7 @@ export default function ImagesScreen() {
                 style={[theme.typography.titleLarge, {color: theme.colors.text}]}>
                 Images
               </Text>
-              {photos && (
+              {photos.length > 0 && (
                 <Text
                   style={[
                     theme.typography.bodySmall,
@@ -229,7 +257,7 @@ export default function ImagesScreen() {
                   ]}>
                   {filterActive || searchQuery
                     ? `${sortedPhotos.length} of ${photos.length} photos`
-                    : `${photos.length} photos`}
+                    : `${photos.length}${hasNextPage ? '+' : ''} photos`}
                 </Text>
               )}
             </View>
@@ -297,7 +325,9 @@ export default function ImagesScreen() {
       )}
 
       {/* Grid */}
-      {!isLoading && sortedPhotos.length === 0 ? (
+      {isLoading ? (
+        <Loader fullscreen label="Loading your photos…" />
+      ) : sortedPhotos.length === 0 ? (
         <EmptyState
           type="images"
           title="No Images Found"
@@ -314,17 +344,36 @@ export default function ImagesScreen() {
             styles.grid,
             {paddingBottom: insets.bottom + 100},
           ]}
-          columnWrapperStyle={{gap: 3}}
-          ItemSeparatorComponent={() => <View style={{height: 3}} />}
-          renderItem={({item, index}) => (
+          columnWrapperStyle={{gap: GRID_GAP}}
+          ItemSeparatorComponent={() => <View style={{height: GRID_GAP}} />}
+          renderItem={({item}) => (
             <ImageTile
               photo={item}
               isSelected={selectedUris.has(item.node.image.uri)}
               onToggle={toggleSelection}
-              index={index}
             />
           )}
           showsVerticalScrollIndicator={false}
+          // ---- performance ----
+          getItemLayout={(_, index) => ({
+            length: ROW_HEIGHT,
+            offset: ROW_HEIGHT * Math.floor(index / COLUMNS),
+            index,
+          })}
+          initialNumToRender={18}
+          maxToRenderPerBatch={18}
+          windowSize={7}
+          removeClippedSubviews
+          // ---- pagination ----
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.6}
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <View style={styles.footerLoader}>
+                <Loader size={28} strokeWidth={3} />
+              </View>
+            ) : null
+          }
         />
       )}
 
@@ -419,6 +468,10 @@ const styles = StyleSheet.create({
   },
   grid: {
     paddingHorizontal: 20,
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
   tile: {
     width: ITEM_SIZE,

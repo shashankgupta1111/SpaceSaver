@@ -9,9 +9,12 @@
     "test": "jest",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "type-check": "tsc --noEmit",
-    "build-apk": "cd android && ./gradlew app:installRelease && cd ..",
-    "build-release": "cd android && ./gradlew app:assembleRelease && cd ..",
-    "clean": "cd android && ./gradlew clean && cd .."
+    "build-apk": "cd android && ./gradlew app:assembleRelease",
+    "build-debug": "cd android && ./gradlew app:assembleDebug",
+    "build-release": "cd android && ./gradlew app:assembleRelease",
+    "install-apk": "adb install -r -g android/app/build/outputs/apk/release/app-release.apk",
+    "install-debug": "adb install -r -g android/app/build/outputs/apk/debug/app-debug.apk",
+    "clean": "cd android && ./gradlew clean"
   },
   "dependencies": {
     "@react-native-camera-roll/camera-roll": "^7.8.0",
@@ -52,6 +55,7 @@
     "@react-native/eslint-config": "0.79.7",
     "@react-native/metro-config": "0.79.7",
     "@react-native/typescript-config": "0.79.7",
+    "@types/jest": "^30.0.0",
     "@types/react": "^19.0.0",
     "@types/react-native": "^0.73.0",
     "@types/react-native-fs": "^2.13.0",

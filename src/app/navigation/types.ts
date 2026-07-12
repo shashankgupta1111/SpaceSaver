@@ -23,6 +23,11 @@ export type RootStackParamList = {
   History: undefined;
   HistoryDetail: {id: string};
   FilePicker: {mode: 'image' | 'video'};
+  Duplicates: undefined;
+  LargeFiles: undefined;
+  Insights: undefined;
+  Cleanup: undefined;
+  AlbumDetail: {albumTitle: string; assetType: 'Photos' | 'Videos' | 'All'};
 };
 
 export interface CompressionOptions {

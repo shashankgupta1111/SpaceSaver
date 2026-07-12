@@ -53,7 +53,7 @@ class SettingsServiceClass {
   getAll(): AppSettings {
     return Object.keys(DEFAULTS).reduce((acc, key) => {
       const k = key as keyof AppSettings;
-      (acc as Record<string, unknown>)[k] = this.get(k);
+      (acc as unknown as Record<string, unknown>)[k] = this.get(k);
       return acc;
     }, {} as AppSettings);
   }

@@ -1,5 +1,5 @@
 import React, {ReactNode} from 'react';
-import {View, StyleSheet, ViewStyle} from 'react-native';
+import {View, StyleSheet, ViewStyle, StyleProp} from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -10,7 +10,7 @@ import {useTheme} from '../../app/theme/ThemeContext';
 
 interface CardProps {
   children: ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   onPress?: () => void;
   variant?: 'default' | 'elevated' | 'filled' | 'outlined';
   padding?: number;

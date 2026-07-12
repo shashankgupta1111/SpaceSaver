@@ -5,6 +5,7 @@ import {StyleSheet} from 'react-native';
 
 import {ThemeProvider} from './theme/ThemeContext';
 import {AlertProvider} from '../shared/components/AlertProvider';
+import ErrorBoundary from '../shared/components/ErrorBoundary';
 import RootNavigator from './navigation/RootNavigator';
 
 const queryClient = new QueryClient({
@@ -22,7 +23,9 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <AlertProvider>
-            <RootNavigator />
+            <ErrorBoundary label="App">
+              <RootNavigator />
+            </ErrorBoundary>
           </AlertProvider>
         </ThemeProvider>
       </QueryClientProvider>

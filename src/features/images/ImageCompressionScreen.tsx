@@ -20,9 +20,11 @@ import {useTheme} from '../../app/theme/ThemeContext';
 import {RootStackParamList, CompressionOptions} from '../../app/navigation/types';
 import {StorageService} from '../../shared/services/StorageService';
 import {CompressionService} from '../../shared/services/CompressionService';
+import {SettingsService} from '../../shared/services/SettingsService';
 import HeaderBar from '../../shared/components/HeaderBar';
 import Card from '../../shared/components/Card';
 import AnimatedButton from '../../shared/components/AnimatedButton';
+import BeforeAfterSlider from '../../shared/components/BeforeAfterSlider';
 
 type Route = RouteProp<RootStackParamList, 'ImageCompression'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -92,11 +94,15 @@ export default function ImageCompressionScreen() {
   const route = useRoute<Route>();
   const {selectedUris} = route.params;
 
-  const [level, setLevel] = useState<CompressionLevel>('medium');
+  // Hydrate from the last-used preset so power users don't re-pick every time.
+  const saved = SettingsService.get('defaultImageOptions');
+  const initialLevel = (saved.compressionLevel as CompressionLevel) ?? 'medium';
+  const [level, setLevel] = useState<CompressionLevel>(initialLevel);
   const [options, setOptions] = useState<CompressionOptions>({
-    ...LEVEL_PRESETS.medium,
+    ...LEVEL_PRESETS[initialLevel],
     keepMetadata: true,
-    compressionLevel: 'medium',
+    ...saved,
+    compressionLevel: initialLevel,
   });
 
   const handleLevelChange = (newLevel: CompressionLevel) => {
@@ -118,6 +124,8 @@ export default function ImageCompressionScreen() {
   const estimatedPercent = Math.round((estimatedSavings / totalOriginalSize) * 100);
 
   const handleCompress = () => {
+    // Remember these choices for next time.
+    SettingsService.set('defaultImageOptions', options);
     navigation.navigate('CompressionProgress', {
       type: 'image',
       uris: selectedUris,
@@ -153,6 +161,7 @@ export default function ImageCompressionScreen() {
               source={{uri}}
               style={styles.previewThumb}
               resizeMode="cover"
+              resizeMethod="resize"
             />
           ))}
           {selectedUris.length > 8 && (
@@ -176,6 +185,27 @@ export default function ImageCompressionScreen() {
           ]}>
           {selectedUris.length} image{selectedUris.length > 1 ? 's' : ''} selected
         </Text>
+
+        {/* Before / After preview (first image) */}
+        <Animated.View entering={FadeInDown.springify()}>
+          <Card style={styles.card}>
+            <Text
+              style={[
+                theme.typography.titleSmall,
+                {color: theme.colors.text, marginBottom: 4},
+              ]}>
+              Preview
+            </Text>
+            <Text
+              style={[
+                theme.typography.bodySmall,
+                {color: theme.colors.textSecondary, marginBottom: 12},
+              ]}>
+              Drag to compare the first image · original vs compressed
+            </Text>
+            <BeforeAfterSlider originalUri={selectedUris[0]} options={options} />
+          </Card>
+        </Animated.View>
 
         {/* Compression Level */}
         <Animated.View entering={FadeInDown.delay(100).springify()}>

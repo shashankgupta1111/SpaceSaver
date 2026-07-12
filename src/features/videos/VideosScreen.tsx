@@ -1,4 +1,4 @@
-import React, {useState, useCallback} from 'react';
+import React, {useState, useCallback, useMemo} from 'react';
 import {
   View,
   Text,
@@ -12,9 +12,9 @@ import {
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useNavigation} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import Animated, {FadeInDown} from 'react-native-reanimated';
+import Animated, {FadeIn, FadeInDown} from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import {useQuery} from '@tanstack/react-query';
+import {useInfiniteQuery} from '@tanstack/react-query';
 import {CameraRoll} from '@react-native-camera-roll/camera-roll';
 import {request, PERMISSIONS, RESULTS} from 'react-native-permissions';
 
@@ -23,6 +23,7 @@ import {RootStackParamList} from '../../app/navigation/types';
 import {StorageService} from '../../shared/services/StorageService';
 import EmptyState from '../../shared/components/EmptyState';
 import AnimatedButton from '../../shared/components/AnimatedButton';
+import Loader from '../../shared/components/Loader';
 import SortFilterSheet from '../../shared/components/SortFilterSheet';
 import {
   SortOrder,
@@ -37,6 +38,7 @@ const {width: SCREEN_WIDTH} = Dimensions.get('window');
 const COLUMNS = 2;
 const ITEM_WIDTH = (SCREEN_WIDTH - 40 - 8) / COLUMNS;
 const ITEM_HEIGHT = ITEM_WIDTH * 0.65;
+const PAGE_SIZE = 40;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -46,21 +48,19 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function VideoTile({
+const VideoTile = React.memo(function VideoTile({
   video,
   isSelected,
   onToggle,
-  index,
 }: {
   video: any;
   isSelected: boolean;
   onToggle: (uri: string) => void;
-  index: number;
 }) {
   const {theme} = useTheme();
   return (
     <Animated.View
-      entering={FadeInDown.delay(index * 30).springify()}
+      entering={FadeIn.duration(180)}
       style={[styles.tile, {backgroundColor: theme.colors.surfaceVariant}]}>
       <TouchableOpacity
         onPress={() => onToggle(video.node.image.uri)}
@@ -70,6 +70,7 @@ function VideoTile({
           source={{uri: video.node.image.uri}}
           style={styles.tileThumb}
           resizeMode="cover"
+          resizeMethod="resize"
         />
         {isSelected && (
           <View
@@ -134,7 +135,7 @@ function VideoTile({
       </View>
     </Animated.View>
   );
-}
+});
 
 export default function VideosScreen() {
   const {theme} = useTheme();
@@ -148,20 +149,43 @@ export default function VideosScreen() {
   const [showSearch, setShowSearch] = useState(false);
   const [showSortFilter, setShowSortFilter] = useState(false);
 
-  const {data: videos, isLoading, refetch} = useQuery({
+  const {
+    data,
+    isLoading,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ['videos'],
-    queryFn: async () => {
-      const perm = await request(PERMISSIONS.ANDROID.READ_MEDIA_VIDEO);
-      if (perm !== RESULTS.GRANTED) {throw new Error('Permission denied');}
-      const result = await CameraRoll.getPhotos({
-        first: 200,
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({pageParam}) => {
+      if (!pageParam) {
+        const perm = await request(PERMISSIONS.ANDROID.READ_MEDIA_VIDEO);
+        if (perm !== RESULTS.GRANTED) {throw new Error('Permission denied');}
+      }
+      return CameraRoll.getPhotos({
+        first: PAGE_SIZE,
+        after: pageParam,
         assetType: 'Videos',
         include: ['fileSize', 'filename', 'imageSize', 'playableDuration'],
       });
-      return result.edges;
     },
+    getNextPageParam: last =>
+      last.page_info.has_next_page ? last.page_info.end_cursor : undefined,
     retry: false,
   });
+
+  const videos = useMemo(
+    () => data?.pages.flatMap(p => p.edges) ?? [],
+    [data],
+  );
+
+  const loadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const toggleSelection = useCallback((uri: string) => {
     setSelectedUris(prev => {
@@ -232,7 +256,7 @@ export default function VideosScreen() {
                 style={[theme.typography.titleLarge, {color: theme.colors.text}]}>
                 Videos
               </Text>
-              {videos && (
+              {videos.length > 0 && (
                 <Text
                   style={[
                     theme.typography.bodySmall,
@@ -240,7 +264,7 @@ export default function VideosScreen() {
                   ]}>
                   {filterActive || searchQuery
                     ? `${sortedVideos.length} of ${videos.length} videos`
-                    : `${videos.length} videos`}
+                    : `${videos.length}${hasNextPage ? '+' : ''} videos`}
                 </Text>
               )}
             </View>
@@ -308,7 +332,9 @@ export default function VideosScreen() {
       )}
 
       {/* Grid */}
-      {!isLoading && sortedVideos.length === 0 ? (
+      {isLoading ? (
+        <Loader fullscreen label="Loading your videos…" />
+      ) : sortedVideos.length === 0 ? (
         <EmptyState
           type="videos"
           title="No Videos Found"
@@ -327,15 +353,27 @@ export default function VideosScreen() {
           ]}
           columnWrapperStyle={{gap: 8}}
           ItemSeparatorComponent={() => <View style={{height: 8}} />}
-          renderItem={({item, index}) => (
+          renderItem={({item}) => (
             <VideoTile
               video={item}
               isSelected={selectedUris.has(item.node.image.uri)}
               onToggle={toggleSelection}
-              index={index}
             />
           )}
           showsVerticalScrollIndicator={false}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          removeClippedSubviews
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.6}
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <View style={styles.footerLoader}>
+                <Loader size={28} strokeWidth={3} />
+              </View>
+            ) : null
+          }
         />
       )}
 
@@ -422,6 +460,10 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   grid: {paddingHorizontal: 20},
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
   tile: {
     width: ITEM_WIDTH,
     borderRadius: 16,

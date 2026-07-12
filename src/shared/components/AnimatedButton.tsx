@@ -100,7 +100,7 @@ export function AnimatedButton({
       case 'secondary':
         return {
           container: {backgroundColor: theme.colors.secondary},
-          text: {color: theme.colors.white},
+          text: {color: theme.colors.onPrimary},
         };
       case 'outline':
         return {
@@ -119,7 +119,7 @@ export function AnimatedButton({
       case 'danger':
         return {
           container: {backgroundColor: theme.colors.error},
-          text: {color: theme.colors.white},
+          text: {color: theme.colors.onPrimary},
         };
     }
   };

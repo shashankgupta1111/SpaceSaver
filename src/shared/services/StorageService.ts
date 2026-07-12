@@ -22,6 +22,18 @@ export interface MonthlyStats {
   saved: number;
 }
 
+export interface StorageForecast {
+  /** Estimated days until storage is full, or null if not enough data / not declining. */
+  daysUntilFull: number | null;
+  /** Average free-space change per day in bytes (negative = filling up). */
+  dailyChange: number;
+  /** Number of distinct daily samples collected so far. */
+  samples: number;
+}
+
+const FREESPACE_SAMPLES_KEY = 'freespace_samples';
+const MAX_SAMPLES = 30;
+
 class StorageServiceClass {
   async getStorageInfo(): Promise<StorageInfo> {
     try {
@@ -32,6 +44,9 @@ class StorageServiceClass {
 
       const savedByApp = storage.getNumber('totalSavedBytes') ?? 0;
       const savedToday = this.getTodaySaved();
+
+      // Record a daily free-space sample to power the storage forecast.
+      this.recordFreeSpaceSample(freeStorage);
 
       return {
         totalStorage,
@@ -51,6 +66,30 @@ class StorageServiceClass {
     }
   }
 
+  /**
+   * Returns a newly-crossed savings milestone (in bytes) the first time total
+   * savings passes it, else null. Marks it celebrated so it fires only once.
+   */
+  checkMilestone(): number | null {
+    const GB = 1024 * 1024 * 1024;
+    const thresholds = [1 * GB, 5 * GB, 10 * GB, 25 * GB, 50 * GB, 100 * GB];
+    const saved = storage.getNumber('totalSavedBytes') ?? 0;
+    const lastCelebrated = storage.getNumber('celebrated_milestone') ?? 0;
+
+    // Highest threshold we've now crossed.
+    let crossed = 0;
+    for (const t of thresholds) {
+      if (saved >= t) {
+        crossed = t;
+      }
+    }
+    if (crossed > lastCelebrated) {
+      storage.set('celebrated_milestone', crossed);
+      return crossed;
+    }
+    return null;
+  }
+
   recordSaving(bytes: number): void {
     const current = storage.getNumber('totalSavedBytes') ?? 0;
     storage.set('totalSavedBytes', current + bytes);
@@ -67,6 +106,66 @@ class StorageServiceClass {
   private getTodaySaved(): number {
     const today = new Date().toISOString().split('T')[0];
     return storage.getNumber(`saved_${today}`) ?? 0;
+  }
+
+  /** Stores today's free-space reading (one sample per day), pruned to MAX_SAMPLES. */
+  recordFreeSpaceSample(freeBytes: number): void {
+    const today = new Date().toISOString().split('T')[0];
+    let samples: Record<string, number>;
+    try {
+      samples = JSON.parse(storage.getString(FREESPACE_SAMPLES_KEY) ?? '{}');
+    } catch {
+      samples = {};
+    }
+    samples[today] = freeBytes;
+
+    // Keep only the most recent MAX_SAMPLES days.
+    const dates = Object.keys(samples).sort();
+    if (dates.length > MAX_SAMPLES) {
+      for (const d of dates.slice(0, dates.length - MAX_SAMPLES)) {
+        delete samples[d];
+      }
+    }
+    storage.set(FREESPACE_SAMPLES_KEY, JSON.stringify(samples));
+  }
+
+  /**
+   * Forecasts days-until-full from the free-space sample history using a simple
+   * least-squares trend. Returns daysUntilFull = null until we have 2+ days of
+   * data or when free space is stable/increasing.
+   */
+  getStorageForecast(currentFree: number): StorageForecast {
+    let samples: Record<string, number>;
+    try {
+      samples = JSON.parse(storage.getString(FREESPACE_SAMPLES_KEY) ?? '{}');
+    } catch {
+      samples = {};
+    }
+    const dates = Object.keys(samples).sort();
+    const count = dates.length;
+    if (count < 2) {
+      return {daysUntilFull: null, dailyChange: 0, samples: count};
+    }
+
+    // x = day offset from the first sample, y = free bytes.
+    const firstDay = new Date(dates[0]).getTime();
+    const xs = dates.map(d => (new Date(d).getTime() - firstDay) / 86400000);
+    const ys = dates.map(d => samples[d]);
+    const n = xs.length;
+    const sumX = xs.reduce((a, b) => a + b, 0);
+    const sumY = ys.reduce((a, b) => a + b, 0);
+    const sumXY = xs.reduce((a, x, i) => a + x * ys[i], 0);
+    const sumXX = xs.reduce((a, x) => a + x * x, 0);
+    const denom = n * sumXX - sumX * sumX;
+    const slope = denom === 0 ? 0 : (n * sumXY - sumX * sumY) / denom;
+    // slope = bytes/day change in FREE space (negative = filling up).
+    const dailyChange = slope;
+
+    if (dailyChange >= 0) {
+      return {daysUntilFull: null, dailyChange, samples: count};
+    }
+    const daysUntilFull = Math.max(0, Math.round(currentFree / -dailyChange));
+    return {daysUntilFull, dailyChange, samples: count};
   }
 
   private updateWeeklyStats(bytes: number): void {

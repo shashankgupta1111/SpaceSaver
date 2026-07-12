@@ -10,6 +10,11 @@ import VideoCompressionScreen from '../../features/videos/VideoCompressionScreen
 import CompressionProgressScreen from '../../features/compression/CompressionProgressScreen';
 import CompressionSuccessScreen from '../../features/compression/CompressionSuccessScreen';
 import HistoryScreen from '../../features/history/HistoryScreen';
+import DuplicatesScreen from '../../features/duplicates/DuplicatesScreen';
+import LargeFilesScreen from '../../features/largefiles/LargeFilesScreen';
+import InsightsScreen from '../../features/insights/InsightsScreen';
+import CleanupScreen from '../../features/cleanup/CleanupScreen';
+import AlbumDetailScreen from '../../features/cleanup/AlbumDetailScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -72,6 +77,31 @@ export default function RootNavigator() {
         <Stack.Screen
           name="History"
           component={HistoryScreen}
+          options={{animation: 'slide_from_right'}}
+        />
+        <Stack.Screen
+          name="Duplicates"
+          component={DuplicatesScreen}
+          options={{animation: 'slide_from_right'}}
+        />
+        <Stack.Screen
+          name="LargeFiles"
+          component={LargeFilesScreen}
+          options={{animation: 'slide_from_right'}}
+        />
+        <Stack.Screen
+          name="Insights"
+          component={InsightsScreen}
+          options={{animation: 'slide_from_right'}}
+        />
+        <Stack.Screen
+          name="Cleanup"
+          component={CleanupScreen}
+          options={{animation: 'slide_from_right'}}
+        />
+        <Stack.Screen
+          name="AlbumDetail"
+          component={AlbumDetailScreen}
           options={{animation: 'slide_from_right'}}
         />
       </Stack.Navigator>

@@ -16,6 +16,7 @@ import {useTheme} from '../../app/theme/ThemeContext';
 import {RootStackParamList, CompressionOptions} from '../../app/navigation/types';
 import {StorageService} from '../../shared/services/StorageService';
 import {CompressionService} from '../../shared/services/CompressionService';
+import {SettingsService} from '../../shared/services/SettingsService';
 import HeaderBar from '../../shared/components/HeaderBar';
 import Card from '../../shared/components/Card';
 import AnimatedButton from '../../shared/components/AnimatedButton';
@@ -105,11 +106,13 @@ export default function VideoCompressionScreen() {
   const route = useRoute<Route>();
   const {selectedUris} = route.params;
 
+  // Hydrate from the last-used preset.
   const [options, setOptions] = useState<CompressionOptions>({
     resolution: '720p',
     videoBitrate: 'auto',
     fps: 'original',
     videoCodec: 'h264',
+    ...SettingsService.get('defaultVideoOptions'),
   });
 
   const estimatedOriginal = selectedUris.length * 100 * 1024 * 1024;
@@ -124,6 +127,7 @@ export default function VideoCompressionScreen() {
   );
 
   const handleCompress = () => {
+    SettingsService.set('defaultVideoOptions', options);
     navigation.navigate('CompressionProgress', {
       type: 'video',
       uris: selectedUris,

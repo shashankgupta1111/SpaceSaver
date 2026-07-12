@@ -177,12 +177,18 @@ export default function HistoryScreen() {
     queryFn: () => HistoryService.getAll(),
   });
 
-  const totalSaved = historyItems.reduce((s, i) => s + i.savedBytes, 0);
+  const totalSaved = historyItems.reduce(
+    (s: number, i: HistoryItem) => s + i.savedBytes,
+    0,
+  );
 
   const filteredItems =
     filter === 'all'
       ? historyItems
-      : historyItems.filter(i => i.type === (filter === 'images' ? 'image' : 'video'));
+      : historyItems.filter(
+          (i: HistoryItem) =>
+            i.type === (filter === 'images' ? 'image' : 'video'),
+        );
 
   const handleDelete = useCallback(
     (id: string) => {

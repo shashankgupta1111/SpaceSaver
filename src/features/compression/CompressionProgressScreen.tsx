@@ -124,7 +124,7 @@ export default function CompressionProgressScreen() {
 
         // Wait if paused
         while (pauseRef.current && !cancelToken.current.cancelled) {
-          await new Promise(r => setTimeout(r, 200));
+          await new Promise<void>(r => setTimeout(() => r(), 200));
         }
 
         if (cancelToken.current.cancelled) {break;}

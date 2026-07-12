@@ -1,4 +1,4 @@
-import React, {useCallback, useRef} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Dimensions,
   RefreshControl,
+  Image,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useNavigation} from '@react-navigation/native';
@@ -27,10 +28,12 @@ import {BarChart} from 'react-native-gifted-charts';
 import {useTheme} from '../../app/theme/ThemeContext';
 import {RootStackParamList} from '../../app/navigation/types';
 import {StorageService, StorageInfo} from '../../shared/services/StorageService';
+import {MediaService, LargeFile} from '../../shared/services/MediaService';
 import {HistoryService} from '../../shared/services/HistoryService';
 import Card from '../../shared/components/Card';
 import StoragePieChart from '../../shared/components/StoragePieChart';
 import AnimatedButton from '../../shared/components/AnimatedButton';
+import {MilestoneModal} from '../../shared/components/MilestoneModal';
 
 const {width: SCREEN_WIDTH} = Dimensions.get('window');
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -88,6 +91,29 @@ export default function HomeScreen() {
 
   const weeklyStats = StorageService.getWeeklyStats();
   const recentItems = HistoryService.getRecentItems(5);
+
+  // Largest-files preview — only query if media access is already granted so
+  // opening Home never triggers a permission prompt on its own.
+  const [mediaAllowed, setMediaAllowed] = useState(false);
+  useEffect(() => {
+    MediaService.hasMediaPermission().then(setMediaAllowed);
+  }, []);
+  const {data: largestFiles = []} = useQuery({
+    queryKey: ['largestMedia', 20],
+    queryFn: () => MediaService.getLargestMedia(20),
+    enabled: mediaAllowed,
+    staleTime: 60_000,
+  });
+  const largestPreview = largestFiles.slice(0, 4);
+
+  // Celebrate savings milestones (1/5/10… GB) once each.
+  const [milestone, setMilestone] = useState<number | null>(null);
+  useEffect(() => {
+    const crossed = StorageService.checkMilestone();
+    if (crossed) {
+      setMilestone(crossed);
+    }
+  }, [storageInfo?.savedByApp]);
 
   const usedPercent = storageInfo
     ? (storageInfo.usedStorage / storageInfo.totalStorage) * 100
@@ -335,6 +361,119 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Cleanup tools */}
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => navigation.navigate('Duplicates')}
+          style={styles.dupCard}>
+          <View
+            style={[
+              styles.dupIcon,
+              {backgroundColor: theme.colors.primaryContainer},
+            ]}>
+            <Icon name="image-multiple-outline" size={24} color={theme.colors.primary} />
+          </View>
+          <View style={styles.dupInfo}>
+            <Text
+              style={[theme.typography.titleSmall, {color: theme.colors.text}]}>
+              Find Duplicate Photos
+            </Text>
+            <Text
+              style={[
+                theme.typography.bodySmall,
+                {color: theme.colors.textSecondary},
+              ]}>
+              Detect copies & similar shots, keep the best
+            </Text>
+          </View>
+          <Icon name="chevron-right" size={22} color={theme.colors.textTertiary} />
+        </TouchableOpacity>
+
+        {/* Clean by album */}
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => navigation.navigate('Cleanup')}
+          style={styles.dupCard}>
+          <View
+            style={[
+              styles.dupIcon,
+              {backgroundColor: theme.colors.primaryContainer},
+            ]}>
+            <Icon name="folder-multiple-image" size={24} color={theme.colors.primary} />
+          </View>
+          <View style={styles.dupInfo}>
+            <Text style={[theme.typography.titleSmall, {color: theme.colors.text}]}>
+              Clean by Album
+            </Text>
+            <Text
+              style={[theme.typography.bodySmall, {color: theme.colors.textSecondary}]}>
+              Screenshots, downloads & app media
+            </Text>
+          </View>
+          <Icon name="chevron-right" size={22} color={theme.colors.textTertiary} />
+        </TouchableOpacity>
+
+        {/* Largest Files */}
+        {largestPreview.length > 0 && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text
+                style={[theme.typography.titleMedium, {color: theme.colors.text}]}>
+                Largest Files
+              </Text>
+              <TouchableOpacity onPress={() => navigation.navigate('LargeFiles')}>
+                <Text
+                  style={[theme.typography.labelLarge, {color: theme.colors.primary}]}>
+                  See all
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Card style={styles.largeCard} padding={0}>
+              {largestPreview.map((file: LargeFile, i: number) => (
+                <TouchableOpacity
+                  key={file.uri}
+                  activeOpacity={0.8}
+                  onPress={() => navigation.navigate('LargeFiles')}
+                  style={[
+                    styles.largeRow,
+                    i < largestPreview.length - 1 && {
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                      borderBottomColor: theme.colors.borderLight,
+                    },
+                  ]}>
+                  <Image
+                    source={{uri: file.uri}}
+                    style={styles.largeThumb}
+                    resizeMode="cover"
+                    resizeMethod="resize"
+                  />
+                  <View style={styles.largeInfo}>
+                    <Text
+                      style={[theme.typography.bodyMedium, {color: theme.colors.text}]}
+                      numberOfLines={1}>
+                      {file.filename}
+                    </Text>
+                    <Text
+                      style={[
+                        theme.typography.bodySmall,
+                        {color: theme.colors.textSecondary},
+                      ]}>
+                      {file.type === 'video' ? 'Video' : 'Photo'}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      theme.typography.titleSmall,
+                      {color: theme.colors.primary, fontWeight: '700'},
+                    ]}>
+                    {StorageService.formatBytes(file.fileSize)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </Card>
+          </>
+        )}
+
         {/* Recent Files */}
         {recentItems.length > 0 && (
           <>
@@ -409,14 +548,17 @@ export default function HomeScreen() {
         )}
 
         {/* Weekly Chart */}
-        <Text
-          style={[
-            theme.typography.titleMedium,
-            styles.sectionTitle,
-            {color: theme.colors.text},
-          ]}>
-          Weekly Savings
-        </Text>
+        <View style={styles.sectionHeader}>
+          <Text
+            style={[theme.typography.titleMedium, {color: theme.colors.text}]}>
+            Weekly Savings
+          </Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Insights')}>
+            <Text style={[theme.typography.labelLarge, {color: theme.colors.primary}]}>
+              Insights
+            </Text>
+          </TouchableOpacity>
+        </View>
         <Card style={styles.chartCard}>
           {barData.some(d => d.value > 0) ? (
             <BarChart
@@ -464,6 +606,12 @@ export default function HomeScreen() {
           )}
         </Card>
       </Animated.ScrollView>
+
+      <MilestoneModal
+        visible={milestone !== null}
+        milestoneBytes={milestone ?? 0}
+        onClose={() => setMilestone(null)}
+      />
     </View>
   );
 }
@@ -568,6 +716,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  dupCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 16,
+    borderRadius: 18,
+    marginBottom: 24,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(91,95,239,0.25)',
+  },
+  dupIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dupInfo: {flex: 1, gap: 2},
+  largeCard: {
+    marginBottom: 24,
+    paddingHorizontal: 14,
+  },
+  largeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  largeThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+  },
+  largeInfo: {flex: 1, gap: 2},
   recentCard: {
     marginBottom: 8,
   },
