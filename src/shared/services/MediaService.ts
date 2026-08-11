@@ -101,6 +101,14 @@ class MediaServiceClass {
       .sort((a, b) => b.count - a.count);
   }
 
+  /** Delete gallery assets via MediaStore (Android 11+ shows a system confirmation). */
+  async deleteAssets(uris: string[]): Promise<void> {
+    if (uris.length === 0) {
+      return;
+    }
+    await CameraRoll.deletePhotos(uris);
+  }
+
   /** Media inside a specific album/bucket, sorted by size descending. */
   async getAlbumMedia(title: string, limit = 300): Promise<LargeFile[]> {
     const res = await CameraRoll.getPhotos({

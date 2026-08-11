@@ -9,7 +9,23 @@ export type SortOrder =
   | 'name_desc';
 
 export type SizeBucket = 'all' | 'large' | 'medium' | 'small';
-export type ImageFormat = 'all' | 'jpeg' | 'png' | 'webp';
+export type ImageFormat =
+  | 'all'
+  | 'jpeg'
+  | 'png'
+  | 'webp'
+  | 'heic'
+  | 'gif'
+  | 'bmp'
+  | 'tiff';
+export type VideoFormat =
+  | 'all'
+  | 'mp4'
+  | 'mov'
+  | 'mkv'
+  | 'webm'
+  | '3gp'
+  | 'avi';
 export type VideoResolution = 'all' | '4k' | '1080p' | '720p' | 'sd';
 
 export interface MediaFilter {
@@ -17,6 +33,8 @@ export interface MediaFilter {
   size: SizeBucket;
   /** Images only: filter by file format/extension. */
   format: ImageFormat;
+  /** Videos only: filter by file format/extension. */
+  videoFormat: VideoFormat;
   /** Videos only: filter by resolution band (based on the longer edge). */
   resolution: VideoResolution;
 }
@@ -24,6 +42,7 @@ export interface MediaFilter {
 export const DEFAULT_FILTER: MediaFilter = {
   size: 'all',
   format: 'all',
+  videoFormat: 'all',
   resolution: 'all',
 };
 
@@ -36,6 +55,7 @@ export function isFilterActive(filter: MediaFilter): boolean {
   return (
     filter.size !== 'all' ||
     filter.format !== 'all' ||
+    filter.videoFormat !== 'all' ||
     filter.resolution !== 'all'
   );
 }
@@ -65,6 +85,37 @@ function matchesFormat(filename: string, format: ImageFormat): boolean {
       return ext === 'png';
     case 'webp':
       return ext === 'webp';
+    case 'heic':
+      return ext === 'heic' || ext === 'heif';
+    case 'gif':
+      return ext === 'gif';
+    case 'bmp':
+      return ext === 'bmp';
+    case 'tiff':
+      return ext === 'tif' || ext === 'tiff';
+    default:
+      return true;
+  }
+}
+
+function matchesVideoFormat(filename: string, format: VideoFormat): boolean {
+  if (format === 'all') {
+    return true;
+  }
+  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+  switch (format) {
+    case 'mp4':
+      return ext === 'mp4' || ext === 'm4v';
+    case 'mov':
+      return ext === 'mov' || ext === 'qt';
+    case 'mkv':
+      return ext === 'mkv';
+    case 'webm':
+      return ext === 'webm';
+    case '3gp':
+      return ext === '3gp' || ext === '3g2';
+    case 'avi':
+      return ext === 'avi';
     default:
       return true;
   }
@@ -122,6 +173,12 @@ export function sortAndFilter(
       return false;
     }
     if (type === 'image' && !matchesFormat(filename, filter.format)) {
+      return false;
+    }
+    if (
+      type === 'video' &&
+      !matchesVideoFormat(filename, filter.videoFormat ?? 'all')
+    ) {
       return false;
     }
     if (

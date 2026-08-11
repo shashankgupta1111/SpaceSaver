@@ -99,6 +99,13 @@ const CODEC_OPTIONS = [
   {label: 'H.265', value: 'h265' as const, subtitle: 'Efficient'},
 ];
 
+const VIDEO_FORMAT_OPTIONS = [
+  {label: 'MP4', value: 'mp4' as const, subtitle: 'Universal'},
+  {label: 'MOV', value: 'mov' as const, subtitle: 'QuickTime'},
+  {label: 'MKV', value: 'mkv' as const, subtitle: 'Matroska'},
+  {label: 'WebM', value: 'webm' as const, subtitle: 'Web Standard'},
+];
+
 export default function VideoCompressionScreen() {
   const {theme} = useTheme();
   const insets = useSafeAreaInsets();
@@ -106,14 +113,28 @@ export default function VideoCompressionScreen() {
   const route = useRoute<Route>();
   const {selectedUris} = route.params;
 
+  const [mode, setMode] = useState<'compress' | 'convert'>('compress');
+
   // Hydrate from the last-used preset.
   const [options, setOptions] = useState<CompressionOptions>({
+    mode: 'compress',
     resolution: '720p',
     videoBitrate: 'auto',
     fps: 'original',
     videoCodec: 'h264',
+    videoOutputFormat: 'mp4',
     ...SettingsService.get('defaultVideoOptions'),
   });
+
+  const handleModeChange = (newMode: 'compress' | 'convert') => {
+    setMode(newMode);
+    setOptions(p => ({
+      ...p,
+      mode: newMode,
+      resolution: newMode === 'convert' ? 'original' : (p.resolution ?? '720p'),
+      videoBitrate: newMode === 'convert' ? 'high' : (p.videoBitrate ?? 'auto'),
+    }));
+  };
 
   const estimatedOriginal = selectedUris.length * 100 * 1024 * 1024;
   const estimatedOutput = CompressionService.estimateCompressedSize(
@@ -141,7 +162,10 @@ export default function VideoCompressionScreen() {
         styles.root,
         {backgroundColor: theme.colors.background, paddingTop: insets.top},
       ]}>
-      <HeaderBar title="Compress Videos" showBack />
+      <HeaderBar
+        title={mode === 'convert' ? 'Convert Video Format' : 'Compress Videos'}
+        showBack
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -175,120 +199,252 @@ export default function VideoCompressionScreen() {
                 theme.typography.bodySmall,
                 {color: theme.colors.warning, flex: 1},
               ]}>
-              Video compression runs in the background. You can lock your screen or switch apps.
+              Video processing runs in the background. You can lock your screen or switch apps.
             </Text>
           </View>
         </Animated.View>
 
-        {/* Resolution */}
-        <Animated.View entering={FadeInDown.delay(100).springify()}>
+        {/* Mode Selector Card */}
+        <Animated.View entering={FadeInDown.springify()}>
           <Card style={styles.card}>
             <Text
               style={[
                 theme.typography.titleSmall,
-                {color: theme.colors.text, marginBottom: 14},
+                {color: theme.colors.text, marginBottom: 10},
               ]}>
-              Resolution
+              Operation Mode
             </Text>
-            <View style={styles.chipRow}>
-              {RESOLUTION_OPTIONS.map(opt => (
-                <OptionChip
-                  key={opt.value}
-                  label={opt.label}
-                  subtitle={opt.subtitle}
-                  selected={options.resolution === opt.value}
-                  onPress={() =>
-                    setOptions(p => ({...p, resolution: opt.value}))
-                  }
-                />
-              ))}
-            </View>
-          </Card>
-        </Animated.View>
-
-        {/* Bitrate */}
-        <Animated.View entering={FadeInDown.delay(150).springify()}>
-          <Card style={styles.card}>
-            <Text
-              style={[
-                theme.typography.titleSmall,
-                {color: theme.colors.text, marginBottom: 14},
-              ]}>
-              Bitrate
-            </Text>
-            <View style={styles.chipRow}>
-              {BITRATE_OPTIONS.map(opt => (
-                <OptionChip
-                  key={opt.value}
-                  label={opt.label}
-                  subtitle={opt.subtitle}
-                  selected={options.videoBitrate === opt.value}
-                  onPress={() =>
-                    setOptions(p => ({...p, videoBitrate: opt.value}))
-                  }
-                />
-              ))}
-            </View>
-          </Card>
-        </Animated.View>
-
-        {/* FPS */}
-        <Animated.View entering={FadeInDown.delay(200).springify()}>
-          <Card style={styles.card}>
-            <Text
-              style={[
-                theme.typography.titleSmall,
-                {color: theme.colors.text, marginBottom: 14},
-              ]}>
-              Frame Rate
-            </Text>
-            <View style={styles.chipRow}>
-              {FPS_OPTIONS.map(opt => (
-                <OptionChip
-                  key={String(opt.value)}
-                  label={opt.label}
-                  selected={options.fps === opt.value}
-                  onPress={() => setOptions(p => ({...p, fps: opt.value}))}
-                />
-              ))}
-            </View>
-          </Card>
-        </Animated.View>
-
-        {/* Codec */}
-        <Animated.View entering={FadeInDown.delay(250).springify()}>
-          <Card style={styles.card}>
-            <Text
-              style={[
-                theme.typography.titleSmall,
-                {color: theme.colors.text, marginBottom: 14},
-              ]}>
-              Video Codec
-            </Text>
-            <View style={styles.chipRow}>
-              {CODEC_OPTIONS.map(opt => (
-                <OptionChip
-                  key={opt.value}
-                  label={opt.label}
-                  subtitle={opt.subtitle}
-                  selected={options.videoCodec === opt.value}
-                  onPress={() =>
-                    setOptions(p => ({...p, videoCodec: opt.value}))
-                  }
-                />
-              ))}
-            </View>
-            {options.videoCodec === 'h265' && (
-              <Text
+            <View style={styles.modeToggleRow}>
+              <TouchableOpacity
+                onPress={() => handleModeChange('compress')}
                 style={[
-                  theme.typography.bodySmall,
-                  {color: theme.colors.textSecondary, marginTop: 8},
+                  styles.modeTab,
+                  mode === 'compress'
+                    ? {backgroundColor: theme.colors.primary}
+                    : {backgroundColor: theme.colors.surfaceVariant},
                 ]}>
-                H.265 requires Android 5.0+ and device hardware support.
-              </Text>
-            )}
+                <Icon
+                  name="zip-box"
+                  size={18}
+                  color={mode === 'compress' ? 'white' : theme.colors.text}
+                />
+                <Text
+                  style={[
+                    theme.typography.labelMedium,
+                    {
+                      color: mode === 'compress' ? 'white' : theme.colors.text,
+                      fontWeight: '700',
+                    },
+                  ]}>
+                  Compress & Save
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => handleModeChange('convert')}
+                style={[
+                  styles.modeTab,
+                  mode === 'convert'
+                    ? {backgroundColor: theme.colors.primary}
+                    : {backgroundColor: theme.colors.surfaceVariant},
+                ]}>
+                <Icon
+                  name="swap-horizontal"
+                  size={18}
+                  color={mode === 'convert' ? 'white' : theme.colors.text}
+                />
+                <Text
+                  style={[
+                    theme.typography.labelMedium,
+                    {
+                      color: mode === 'convert' ? 'white' : theme.colors.text,
+                      fontWeight: '700',
+                    },
+                  ]}>
+                  Format Converter
+                </Text>
+              </TouchableOpacity>
+            </View>
           </Card>
         </Animated.View>
+
+        {mode === 'convert' ? (
+          <>
+            <Animated.View entering={FadeInDown.delay(100).springify()}>
+              <Card
+                style={[
+                  styles.card,
+                  {backgroundColor: theme.colors.successContainer},
+                ]}
+                variant="filled">
+                <View style={styles.infoRow}>
+                  <Icon
+                    name="shield-check-outline"
+                    size={24}
+                    color={theme.colors.success}
+                  />
+                  <View style={{flex: 1}}>
+                    <Text
+                      style={[
+                        theme.typography.titleSmall,
+                        {color: theme.colors.text},
+                      ]}>
+                      Original Quality & Resolution Preserved
+                    </Text>
+                    <Text
+                      style={[
+                        theme.typography.bodySmall,
+                        {
+                          color: theme.colors.textSecondary,
+                          marginTop: 2,
+                        },
+                      ]}>
+                      Converts video format (e.g. MOV ➔ MP4, MKV ➔ MP4) preserving original resolution and high bitrate without quality loss.
+                    </Text>
+                  </View>
+                </View>
+              </Card>
+            </Animated.View>
+
+            {/* Target Video Container Format */}
+            <Animated.View entering={FadeInDown.delay(150).springify()}>
+              <Card style={styles.card}>
+                <Text
+                  style={[
+                    theme.typography.titleSmall,
+                    {color: theme.colors.text, marginBottom: 14},
+                  ]}>
+                  Target Video Format
+                </Text>
+                <View style={styles.chipRow}>
+                  {VIDEO_FORMAT_OPTIONS.map(opt => (
+                    <OptionChip
+                      key={opt.value}
+                      label={opt.label}
+                      subtitle={opt.subtitle}
+                      selected={options.videoOutputFormat === opt.value}
+                      onPress={() =>
+                        setOptions(p => ({...p, videoOutputFormat: opt.value}))
+                      }
+                    />
+                  ))}
+                </View>
+              </Card>
+            </Animated.View>
+          </>
+        ) : (
+          <>
+            {/* Resolution */}
+            <Animated.View entering={FadeInDown.delay(100).springify()}>
+              <Card style={styles.card}>
+                <Text
+                  style={[
+                    theme.typography.titleSmall,
+                    {color: theme.colors.text, marginBottom: 14},
+                  ]}>
+                  Resolution
+                </Text>
+                <View style={styles.chipRow}>
+                  {RESOLUTION_OPTIONS.map(opt => (
+                    <OptionChip
+                      key={opt.value}
+                      label={opt.label}
+                      subtitle={opt.subtitle}
+                      selected={options.resolution === opt.value}
+                      onPress={() =>
+                        setOptions(p => ({...p, resolution: opt.value}))
+                      }
+                    />
+                  ))}
+                </View>
+              </Card>
+            </Animated.View>
+
+            {/* Bitrate */}
+            <Animated.View entering={FadeInDown.delay(150).springify()}>
+              <Card style={styles.card}>
+                <Text
+                  style={[
+                    theme.typography.titleSmall,
+                    {color: theme.colors.text, marginBottom: 14},
+                  ]}>
+                  Bitrate
+                </Text>
+                <View style={styles.chipRow}>
+                  {BITRATE_OPTIONS.map(opt => (
+                    <OptionChip
+                      key={opt.value}
+                      label={opt.label}
+                      subtitle={opt.subtitle}
+                      selected={options.videoBitrate === opt.value}
+                      onPress={() =>
+                        setOptions(p => ({...p, videoBitrate: opt.value}))
+                      }
+                    />
+                  ))}
+                </View>
+              </Card>
+            </Animated.View>
+
+            {/* FPS */}
+            <Animated.View entering={FadeInDown.delay(200).springify()}>
+              <Card style={styles.card}>
+                <Text
+                  style={[
+                    theme.typography.titleSmall,
+                    {color: theme.colors.text, marginBottom: 14},
+                  ]}>
+                  Frame Rate
+                </Text>
+                <View style={styles.chipRow}>
+                  {FPS_OPTIONS.map(opt => (
+                    <OptionChip
+                      key={String(opt.value)}
+                      label={opt.label}
+                      selected={options.fps === opt.value}
+                      onPress={() => setOptions(p => ({...p, fps: opt.value}))}
+                    />
+                  ))}
+                </View>
+              </Card>
+            </Animated.View>
+
+            {/* Codec */}
+            <Animated.View entering={FadeInDown.delay(250).springify()}>
+              <Card style={styles.card}>
+                <Text
+                  style={[
+                    theme.typography.titleSmall,
+                    {color: theme.colors.text, marginBottom: 14},
+                  ]}>
+                  Video Codec
+                </Text>
+                <View style={styles.chipRow}>
+                  {CODEC_OPTIONS.map(opt => (
+                    <OptionChip
+                      key={opt.value}
+                      label={opt.label}
+                      subtitle={opt.subtitle}
+                      selected={options.videoCodec === opt.value}
+                      onPress={() =>
+                        setOptions(p => ({...p, videoCodec: opt.value}))
+                      }
+                    />
+                  ))}
+                </View>
+                {options.videoCodec === 'h265' && (
+                  <Text
+                    style={[
+                      theme.typography.bodySmall,
+                      {color: theme.colors.textSecondary, marginTop: 8},
+                    ]}>
+                    H.265 requires Android 5.0+ and device hardware support.
+                  </Text>
+                )}
+              </Card>
+            </Animated.View>
+          </>
+        )}
 
         {/* Estimate */}
         <Animated.View entering={FadeInDown.delay(300).springify()}>
@@ -357,9 +513,13 @@ export default function VideoCompressionScreen() {
           size="lg"
           gradient
           fullWidth>
-          <Icon name="zip-box" size={20} color="white" />
+          <Icon
+            name={mode === 'convert' ? 'swap-horizontal' : 'zip-box'}
+            size={20}
+            color="white"
+          />
           <Text style={[theme.typography.titleSmall, {color: 'white'}]}>
-            Start Compression
+            {mode === 'convert' ? 'Convert Format' : 'Start Compression'}
           </Text>
         </AnimatedButton>
       </View>
@@ -380,6 +540,24 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   card: {marginHorizontal: 20, marginBottom: 10},
+  modeToggleRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  modeTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

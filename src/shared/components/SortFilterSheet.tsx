@@ -19,6 +19,7 @@ import {
   DEFAULT_SORT,
   SizeBucket,
   ImageFormat,
+  VideoFormat,
   VideoResolution,
 } from '../utils/mediaSortFilter';
 
@@ -53,6 +54,20 @@ const FORMAT_OPTIONS: {value: ImageFormat; label: string}[] = [
   {value: 'jpeg', label: 'JPEG'},
   {value: 'png', label: 'PNG'},
   {value: 'webp', label: 'WebP'},
+  {value: 'heic', label: 'HEIC'},
+  {value: 'gif', label: 'GIF'},
+  {value: 'bmp', label: 'BMP'},
+  {value: 'tiff', label: 'TIFF'},
+];
+
+const VIDEO_FORMAT_OPTIONS: {value: VideoFormat; label: string}[] = [
+  {value: 'all', label: 'All'},
+  {value: 'mp4', label: 'MP4'},
+  {value: 'mov', label: 'MOV'},
+  {value: 'mkv', label: 'MKV'},
+  {value: 'webm', label: 'WebM'},
+  {value: '3gp', label: '3GP'},
+  {value: 'avi', label: 'AVI'},
 ];
 
 const RESOLUTION_OPTIONS: {value: VideoResolution; label: string}[] = [
@@ -224,6 +239,27 @@ export default function SortFilterSheet({
               </>
             ) : (
               <>
+                <Text
+                  style={[
+                    theme.typography.labelLarge,
+                    styles.sectionTitle,
+                    {color: theme.colors.textSecondary, marginTop: 20},
+                  ]}>
+                  VIDEO FORMAT
+                </Text>
+                <View style={styles.chipWrap}>
+                  {VIDEO_FORMAT_OPTIONS.map(opt => (
+                    <Chip
+                      key={opt.value}
+                      label={opt.label}
+                      active={filter.videoFormat === opt.value}
+                      onPress={() =>
+                        onChangeFilter({...filter, videoFormat: opt.value})
+                      }
+                    />
+                  ))}
+                </View>
+
                 <Text
                   style={[
                     theme.typography.labelLarge,

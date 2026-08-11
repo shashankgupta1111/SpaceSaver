@@ -28,14 +28,18 @@ export type RootStackParamList = {
   Insights: undefined;
   Cleanup: undefined;
   AlbumDetail: {albumTitle: string; assetType: 'Photos' | 'Videos' | 'All'};
+  FormatConverter: {selectedUris?: string[]; mediaType?: 'image' | 'video'} | undefined;
 };
 
 export interface CompressionOptions {
+  // Mode: compress (quality reduction) or convert (format conversion maintaining quality)
+  mode?: 'compress' | 'convert';
+
   // Image options
   quality?: number;
   maxWidth?: number;
   maxHeight?: number;
-  outputFormat?: 'jpeg' | 'png' | 'webp';
+  outputFormat?: 'jpeg' | 'png' | 'webp' | 'heic';
   keepMetadata?: boolean;
   compressionLevel?: 'low' | 'medium' | 'high' | 'custom';
 
@@ -44,6 +48,7 @@ export interface CompressionOptions {
   videoBitrate?: 'auto' | 'low' | 'medium' | 'high';
   fps?: 30 | 24 | 15 | 'original';
   videoCodec?: 'h264' | 'h265';
+  videoOutputFormat?: 'mp4' | 'mov' | 'mkv' | 'webm';
 }
 
 export interface CompressionResult {

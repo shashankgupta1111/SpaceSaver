@@ -97,13 +97,25 @@ export default function ImageCompressionScreen() {
   // Hydrate from the last-used preset so power users don't re-pick every time.
   const saved = SettingsService.get('defaultImageOptions');
   const initialLevel = (saved.compressionLevel as CompressionLevel) ?? 'medium';
+  const [mode, setMode] = useState<'compress' | 'convert'>('compress');
   const [level, setLevel] = useState<CompressionLevel>(initialLevel);
   const [options, setOptions] = useState<CompressionOptions>({
+    mode: 'compress',
     ...LEVEL_PRESETS[initialLevel],
     keepMetadata: true,
     ...saved,
     compressionLevel: initialLevel,
   });
+
+  const handleModeChange = (newMode: 'compress' | 'convert') => {
+    setMode(newMode);
+    setOptions(prev => ({
+      ...prev,
+      mode: newMode,
+      quality: newMode === 'convert' ? 1.0 : (prev.quality ?? 0.8),
+      maxWidth: newMode === 'convert' ? undefined : (prev.maxWidth ?? 1920),
+    }));
+  };
 
   const handleLevelChange = (newLevel: CompressionLevel) => {
     setLevel(newLevel);
@@ -141,7 +153,10 @@ export default function ImageCompressionScreen() {
         styles.root,
         {backgroundColor: theme.colors.background, paddingTop: insets.top},
       ]}>
-      <HeaderBar title="Compress Images" showBack />
+      <HeaderBar
+        title={mode === 'convert' ? 'Convert Image Format' : 'Compress Images'}
+        showBack
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -186,132 +201,239 @@ export default function ImageCompressionScreen() {
           {selectedUris.length} image{selectedUris.length > 1 ? 's' : ''} selected
         </Text>
 
-        {/* Before / After preview (first image) */}
+        {/* Mode Selector Card */}
         <Animated.View entering={FadeInDown.springify()}>
           <Card style={styles.card}>
             <Text
               style={[
                 theme.typography.titleSmall,
-                {color: theme.colors.text, marginBottom: 4},
+                {color: theme.colors.text, marginBottom: 10},
               ]}>
-              Preview
+              Operation Mode
             </Text>
-            <Text
-              style={[
-                theme.typography.bodySmall,
-                {color: theme.colors.textSecondary, marginBottom: 12},
-              ]}>
-              Drag to compare the first image · original vs compressed
-            </Text>
-            <BeforeAfterSlider originalUri={selectedUris[0]} options={options} />
-          </Card>
-        </Animated.View>
+            <View style={styles.modeToggleRow}>
+              <TouchableOpacity
+                onPress={() => handleModeChange('compress')}
+                style={[
+                  styles.modeTab,
+                  mode === 'compress'
+                    ? {backgroundColor: theme.colors.primary}
+                    : {backgroundColor: theme.colors.surfaceVariant},
+                ]}>
+                <Icon
+                  name="zip-box"
+                  size={18}
+                  color={mode === 'compress' ? 'white' : theme.colors.text}
+                />
+                <Text
+                  style={[
+                    theme.typography.labelMedium,
+                    {
+                      color: mode === 'compress' ? 'white' : theme.colors.text,
+                      fontWeight: '700',
+                    },
+                  ]}>
+                  Compress & Save
+                </Text>
+              </TouchableOpacity>
 
-        {/* Compression Level */}
-        <Animated.View entering={FadeInDown.delay(100).springify()}>
-          <Card style={styles.card}>
-            <Text
-              style={[
-                theme.typography.titleSmall,
-                {color: theme.colors.text, marginBottom: 14},
-              ]}>
-              Compression Level
-            </Text>
-            <View style={styles.chipRow}>
-              {(['low', 'medium', 'high', 'custom'] as CompressionLevel[]).map(
-                l => (
-                  <OptionChip
-                    key={l}
-                    label={l.charAt(0).toUpperCase() + l.slice(1)}
-                    selected={level === l}
-                    onPress={() => handleLevelChange(l)}
-                  />
-                ),
-              )}
+              <TouchableOpacity
+                onPress={() => handleModeChange('convert')}
+                style={[
+                  styles.modeTab,
+                  mode === 'convert'
+                    ? {backgroundColor: theme.colors.primary}
+                    : {backgroundColor: theme.colors.surfaceVariant},
+                ]}>
+                <Icon
+                  name="swap-horizontal"
+                  size={18}
+                  color={mode === 'convert' ? 'white' : theme.colors.text}
+                />
+                <Text
+                  style={[
+                    theme.typography.labelMedium,
+                    {
+                      color: mode === 'convert' ? 'white' : theme.colors.text,
+                      fontWeight: '700',
+                    },
+                  ]}>
+                  Format Converter
+                </Text>
+              </TouchableOpacity>
             </View>
           </Card>
         </Animated.View>
 
-        {/* Quality slider (custom mode) */}
-        {level === 'custom' && (
-          <Animated.View entering={FadeInDown.delay(150).springify()}>
-            <Card style={styles.card}>
-              <View style={styles.sliderHeader}>
-                <Text
-                  style={[theme.typography.titleSmall, {color: theme.colors.text}]}>
-                  Image Quality
-                </Text>
-                <View
-                  style={[
-                    styles.qualityBadge,
-                    {backgroundColor: theme.colors.primaryContainer},
-                  ]}>
+        {mode === 'convert' ? (
+          <Animated.View entering={FadeInDown.delay(100).springify()}>
+            <Card
+              style={[
+                styles.card,
+                {backgroundColor: theme.colors.successContainer},
+              ]}
+              variant="filled">
+              <View style={styles.infoRow}>
+                <Icon
+                  name="shield-check-outline"
+                  size={24}
+                  color={theme.colors.success}
+                />
+                <View style={{flex: 1}}>
                   <Text
                     style={[
-                      theme.typography.labelLarge,
-                      {color: theme.colors.primary, fontWeight: '700'},
+                      theme.typography.titleSmall,
+                      {color: theme.colors.text},
                     ]}>
-                    {qualityPercent}%
+                    100% Original Quality Preserved
+                  </Text>
+                  <Text
+                    style={[
+                      theme.typography.bodySmall,
+                      {
+                        color: theme.colors.textSecondary,
+                        marginTop: 2,
+                      },
+                    ]}>
+                    Converts image format (e.g. HEIC ➔ JPEG or PNG ➔ WebP) at maximum 100% quality without reducing visual quality.
                   </Text>
                 </View>
               </View>
-              <Slider
-                minimumValue={0.3}
-                maximumValue={1.0}
-                value={options.quality ?? 0.8}
-                onValueChange={v =>
-                  setOptions(prev => ({...prev, quality: v}))
-                }
-                minimumTrackTintColor={theme.colors.primary}
-                maximumTrackTintColor={theme.colors.border}
-                thumbTintColor={theme.colors.primary}
-                step={0.05}
-                style={styles.slider}
-              />
-              <View style={styles.sliderLabels}>
-                <Text style={[theme.typography.bodySmall, {color: theme.colors.textTertiary}]}>
-                  Smaller size
-                </Text>
-                <Text style={[theme.typography.bodySmall, {color: theme.colors.textTertiary}]}>
-                  Better quality
-                </Text>
-              </View>
+            </Card>
+          </Animated.View>
+        ) : (
+          /* Before / After preview (first image) */
+          <Animated.View entering={FadeInDown.springify()}>
+            <Card style={styles.card}>
+              <Text
+                style={[
+                  theme.typography.titleSmall,
+                  {color: theme.colors.text, marginBottom: 4},
+                ]}>
+                Preview
+              </Text>
+              <Text
+                style={[
+                  theme.typography.bodySmall,
+                  {color: theme.colors.textSecondary, marginBottom: 12},
+                ]}>
+                Drag to compare the first image · original vs compressed
+              </Text>
+              <BeforeAfterSlider originalUri={selectedUris[0]} options={options} />
             </Card>
           </Animated.View>
         )}
 
-        {/* Resize */}
-        <Animated.View entering={FadeInDown.delay(200).springify()}>
-          <Card style={styles.card}>
-            <Text
-              style={[
-                theme.typography.titleSmall,
-                {color: theme.colors.text, marginBottom: 14},
-              ]}>
-              Max Dimension
-            </Text>
-            <View style={styles.chipRow}>
-              {RESIZE_OPTIONS.map(opt => (
-                <OptionChip
-                  key={opt.label}
-                  label={opt.label}
-                  selected={
-                    opt.value === 0
-                      ? !options.maxWidth
-                      : options.maxWidth === opt.value
-                  }
-                  onPress={() =>
-                    setOptions(prev => ({
-                      ...prev,
-                      maxWidth: opt.value === 0 ? undefined : opt.value,
-                      maxHeight: opt.value === 0 ? undefined : opt.value,
-                    }))
-                  }
-                />
-              ))}
-            </View>
-          </Card>
-        </Animated.View>
+        {/* Compression options only shown in 'compress' mode */}
+        {mode === 'compress' && (
+          <>
+            {/* Compression Level */}
+            <Animated.View entering={FadeInDown.delay(100).springify()}>
+              <Card style={styles.card}>
+                <Text
+                  style={[
+                    theme.typography.titleSmall,
+                    {color: theme.colors.text, marginBottom: 14},
+                  ]}>
+                  Compression Level
+                </Text>
+                <View style={styles.chipRow}>
+                  {(['low', 'medium', 'high', 'custom'] as CompressionLevel[]).map(
+                    l => (
+                      <OptionChip
+                        key={l}
+                        label={l.charAt(0).toUpperCase() + l.slice(1)}
+                        selected={level === l}
+                        onPress={() => handleLevelChange(l)}
+                      />
+                    ),
+                  )}
+                </View>
+              </Card>
+            </Animated.View>
+
+            {/* Quality slider (custom mode) */}
+            {level === 'custom' && (
+              <Animated.View entering={FadeInDown.delay(150).springify()}>
+                <Card style={styles.card}>
+                  <View style={styles.sliderHeader}>
+                    <Text
+                      style={[theme.typography.titleSmall, {color: theme.colors.text}]}>
+                      Image Quality
+                    </Text>
+                    <View
+                      style={[
+                        styles.qualityBadge,
+                        {backgroundColor: theme.colors.primaryContainer},
+                      ]}>
+                      <Text
+                        style={[
+                          theme.typography.labelLarge,
+                          {color: theme.colors.primary, fontWeight: '700'},
+                        ]}>
+                        {qualityPercent}%
+                      </Text>
+                    </View>
+                  </View>
+                  <Slider
+                    minimumValue={0.3}
+                    maximumValue={1.0}
+                    value={options.quality ?? 0.8}
+                    onValueChange={v =>
+                      setOptions(prev => ({...prev, quality: v}))
+                    }
+                    minimumTrackTintColor={theme.colors.primary}
+                    maximumTrackTintColor={theme.colors.border}
+                    thumbTintColor={theme.colors.primary}
+                    step={0.05}
+                    style={styles.slider}
+                  />
+                  <View style={styles.sliderLabels}>
+                    <Text style={[theme.typography.bodySmall, {color: theme.colors.textTertiary}]}>
+                      Smaller size
+                    </Text>
+                    <Text style={[theme.typography.bodySmall, {color: theme.colors.textTertiary}]}>
+                      Better quality
+                    </Text>
+                  </View>
+                </Card>
+              </Animated.View>
+            )}
+
+            {/* Resize */}
+            <Animated.View entering={FadeInDown.delay(200).springify()}>
+              <Card style={styles.card}>
+                <Text
+                  style={[
+                    theme.typography.titleSmall,
+                    {color: theme.colors.text, marginBottom: 14},
+                  ]}>
+                  Max Dimension
+                </Text>
+                <View style={styles.chipRow}>
+                  {RESIZE_OPTIONS.map(opt => (
+                    <OptionChip
+                      key={opt.label}
+                      label={opt.label}
+                      selected={
+                        opt.value === 0
+                          ? !options.maxWidth
+                          : options.maxWidth === opt.value
+                      }
+                      onPress={() =>
+                        setOptions(prev => ({
+                          ...prev,
+                          maxWidth: opt.value === 0 ? undefined : opt.value,
+                          maxHeight: opt.value === 0 ? undefined : opt.value,
+                        }))
+                      }
+                    />
+                  ))}
+                </View>
+              </Card>
+            </Animated.View>
+          </>
+        )}
 
         {/* Format */}
         <Animated.View entering={FadeInDown.delay(250).springify()}>
@@ -456,9 +578,13 @@ export default function ImageCompressionScreen() {
           size="lg"
           gradient
           fullWidth>
-          <Icon name="zip-box" size={20} color="white" />
+          <Icon
+            name={mode === 'convert' ? 'swap-horizontal' : 'zip-box'}
+            size={20}
+            color="white"
+          />
           <Text style={[theme.typography.titleSmall, {color: 'white'}]}>
-            Start Compression
+            {mode === 'convert' ? 'Convert Format' : 'Start Compression'}
           </Text>
         </AnimatedButton>
       </View>
@@ -489,6 +615,24 @@ const styles = StyleSheet.create({
   card: {
     marginHorizontal: 20,
     marginBottom: 10,
+  },
+  modeToggleRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  modeTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
   },
   chipRow: {
     flexDirection: 'row',

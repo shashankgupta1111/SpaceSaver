@@ -19,17 +19,12 @@ class CompressionServiceClass {
     const fileName = uri.split('/').pop() ?? 'image';
     const id = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
-    const quality = options.quality ?? 0.8;
-    const maxWidth = options.maxWidth ?? 1920;
-    const maxHeight = options.maxHeight ?? 1920;
+    const isConvertMode = options.mode === 'convert';
+    const quality = isConvertMode ? 1.0 : (options.quality ?? 0.8);
+    const maxWidth = isConvertMode ? undefined : options.maxWidth ?? 1920;
+    const maxHeight = isConvertMode ? undefined : options.maxHeight ?? 1920;
 
-    let outputExt = 'jpg';
-    if (options.outputFormat === 'png') {outputExt = 'png';}
-    if (options.outputFormat === 'webp') {outputExt = 'webp';}
-
-    const outputDir = `${RNFS.CachesDirectoryPath}/SpaceSaver`;
-    await RNFS.mkdir(outputDir);
-    const outputPath = `${outputDir}/${id}.${outputExt}`;
+    const outputFormat = options.outputFormat === 'png' ? 'png' : 'jpg';
 
     if (cancelToken?.cancelled) {
       throw new Error('CANCELLED');
@@ -39,7 +34,7 @@ class CompressionServiceClass {
       quality,
       maxWidth,
       maxHeight,
-      output: options.outputFormat === 'png' ? 'png' : 'jpg',
+      output: outputFormat,
       progressDivider: 10,
       downloadProgress: progress => {
         onProgress?.(progress);
@@ -84,6 +79,8 @@ class CompressionServiceClass {
       throw new Error('CANCELLED');
     }
 
+    const isConvertMode = options.mode === 'convert';
+
     const resolutionMap: Record<string, number> = {
       '1080p': 1080,
       '720p': 720,
@@ -99,9 +96,11 @@ class CompressionServiceClass {
       auto: undefined,
     };
 
-    const resolution = options.resolution ?? '720p';
+    const resolution = isConvertMode ? 'original' : (options.resolution ?? '720p');
     const maxSize = resolutionMap[resolution] ?? 720;
-    const bitrate = bitrateMap[options.videoBitrate ?? 'auto'];
+    const bitrate = isConvertMode
+      ? 4000000
+      : bitrateMap[options.videoBitrate ?? 'auto'];
 
     const compressedUri = await VideoCompressor.compress(
       uri,
@@ -188,6 +187,20 @@ class CompressionServiceClass {
     options: CompressionOptions,
     type: 'image' | 'video',
   ): number {
+    if (options.mode === 'convert') {
+      if (type === 'image') {
+        if (options.outputFormat === 'webp') {
+          return Math.round(originalSize * 0.75);
+        }
+        if (options.outputFormat === 'png') {
+          return Math.round(originalSize * 1.05);
+        }
+        return Math.round(originalSize * 0.95);
+      } else {
+        return Math.round(originalSize * 0.95);
+      }
+    }
+
     if (type === 'image') {
       const quality = options.quality ?? 0.8;
       const scaleFactor =

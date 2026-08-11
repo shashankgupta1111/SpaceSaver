@@ -286,79 +286,108 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Quick Actions */}
+        {/* Tools & Functions Grid */}
         <Text
           style={[
             theme.typography.titleMedium,
             styles.sectionTitle,
-            {color: theme.colors.text},
+            {color: theme.colors.text, fontWeight: '700'},
           ]}>
-          Quick Actions
+          Core Functions & Tools
         </Text>
-        <View style={styles.actionsRow}>
+
+        <View style={styles.actionsGrid}>
+          {/* Format Converter Card */}
           <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() =>
-              navigation.navigate('Main', {screen: 'Images'})
-            }>
+            style={[styles.fullToolCard, {backgroundColor: theme.colors.surface, borderColor: theme.colors.border}]}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('FormatConverter')}>
             <LinearGradient
-              colors={['#5B5FEF', '#7C4DFF']}
-              style={styles.actionGradient}>
-              <View
-                style={[
-                  styles.actionIcon,
-                  {backgroundColor: 'rgba(255,255,255,0.2)'},
-                ]}>
-                <Icon name="image-multiple" size={28} color="white" />
+              colors={['#8B5CF6', '#6366F1']}
+              start={{x: 0, y: 0}}
+              end={{x: 1, y: 1}}
+              style={styles.fullToolGradient}>
+              <View style={styles.fullToolHeader}>
+                <View style={styles.fullToolIconBox}>
+                  <Icon name="file-replace-outline" size={26} color="white" />
+                </View>
+                <View style={styles.badgeLossless}>
+                  <Text style={styles.badgeLosslessText}>100% Quality</Text>
+                </View>
               </View>
-              <Text
-                style={[
-                  theme.typography.titleSmall,
-                  {color: 'white', marginTop: 12},
-                ]}>
-                Compress
+              <Text style={[theme.typography.titleMedium, {color: 'white', fontWeight: '700', marginTop: 10}]}>
+                Format Converter
               </Text>
-              <Text
-                style={[
-                  theme.typography.bodySmall,
-                  {color: 'rgba(255,255,255,0.75)'},
-                ]}>
-                Images
+              <Text style={[theme.typography.bodySmall, {color: 'rgba(255,255,255,0.85)', marginTop: 2}]}>
+                Convert PNG, HEIC, JPEG, MP4, MOV, MKV without losing quality
               </Text>
             </LinearGradient>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() =>
-              navigation.navigate('Main', {screen: 'Videos'})
-            }>
-            <LinearGradient
-              colors={['#7C4DFF', '#5B5FEF']}
-              style={styles.actionGradient}>
-              <View
-                style={[
-                  styles.actionIcon,
-                  {backgroundColor: 'rgba(255,255,255,0.2)'},
-                ]}>
-                <Icon name="video" size={28} color="white" />
-              </View>
-              <Text
-                style={[
-                  theme.typography.titleSmall,
-                  {color: 'white', marginTop: 12},
-                ]}>
-                Compress
-              </Text>
-              <Text
-                style={[
-                  theme.typography.bodySmall,
-                  {color: 'rgba(255,255,255,0.75)'},
-                ]}>
-                Videos
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
+          {/* Compress Photos & Compress Videos row */}
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={styles.actionCard}
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('Main', {screen: 'Images'})}>
+              <LinearGradient
+                colors={['#5B5FEF', '#7C4DFF']}
+                style={styles.actionGradient}>
+                <View
+                  style={[
+                    styles.actionIcon,
+                    {backgroundColor: 'rgba(255,255,255,0.2)'},
+                  ]}>
+                  <Icon name="image-multiple" size={26} color="white" />
+                </View>
+                <Text
+                  style={[
+                    theme.typography.titleSmall,
+                    {color: 'white', marginTop: 10, fontWeight: '700'},
+                  ]}>
+                  Compress Photos
+                </Text>
+                <Text
+                  style={[
+                    theme.typography.bodySmall,
+                    {color: 'rgba(255,255,255,0.8)'},
+                  ]}>
+                  Save space
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionCard}
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('Main', {screen: 'Videos'})}>
+              <LinearGradient
+                colors={['#06B6D4', '#3B82F6']}
+                style={styles.actionGradient}>
+                <View
+                  style={[
+                    styles.actionIcon,
+                    {backgroundColor: 'rgba(255,255,255,0.2)'},
+                  ]}>
+                  <Icon name="video" size={26} color="white" />
+                </View>
+                <Text
+                  style={[
+                    theme.typography.titleSmall,
+                    {color: 'white', marginTop: 10, fontWeight: '700'},
+                  ]}>
+                  Compress Videos
+                </Text>
+                <Text
+                  style={[
+                    theme.typography.bodySmall,
+                    {color: 'rgba(255,255,255,0.8)'},
+                  ]}>
+                  Save space
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Cleanup tools */}
@@ -694,10 +723,46 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     marginTop: 8,
   },
+  actionsGrid: {
+    gap: 12,
+    marginBottom: 24,
+  },
+  fullToolCard: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+  },
+  fullToolGradient: {
+    padding: 18,
+    borderRadius: 20,
+  },
+  fullToolHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  fullToolIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeLossless: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  badgeLosslessText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   actionsRow: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 24,
   },
   actionCard: {
     flex: 1,

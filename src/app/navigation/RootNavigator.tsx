@@ -15,6 +15,7 @@ import LargeFilesScreen from '../../features/largefiles/LargeFilesScreen';
 import InsightsScreen from '../../features/insights/InsightsScreen';
 import CleanupScreen from '../../features/cleanup/CleanupScreen';
 import AlbumDetailScreen from '../../features/cleanup/AlbumDetailScreen';
+import FormatConverterScreen from '../../features/converter/FormatConverterScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -102,6 +103,11 @@ export default function RootNavigator() {
         <Stack.Screen
           name="AlbumDetail"
           component={AlbumDetailScreen}
+          options={{animation: 'slide_from_right'}}
+        />
+        <Stack.Screen
+          name="FormatConverter"
+          component={FormatConverterScreen}
           options={{animation: 'slide_from_right'}}
         />
       </Stack.Navigator>

@@ -14,7 +14,7 @@ import {useNavigation} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import Animated, {FadeIn, FadeInDown} from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import {useInfiniteQuery} from '@tanstack/react-query';
+import {useInfiniteQuery, useQueryClient} from '@tanstack/react-query';
 import {CameraRoll} from '@react-native-camera-roll/camera-roll';
 import {request, PERMISSIONS, RESULTS} from 'react-native-permissions';
 
@@ -25,6 +25,9 @@ import EmptyState from '../../shared/components/EmptyState';
 import AnimatedButton from '../../shared/components/AnimatedButton';
 import Loader from '../../shared/components/Loader';
 import SortFilterSheet from '../../shared/components/SortFilterSheet';
+import MediaPreviewModal, {
+  MediaPreviewItem,
+} from '../../shared/components/MediaPreviewModal';
 import {
   SortOrder,
   MediaFilter,
@@ -52,10 +55,12 @@ const VideoTile = React.memo(function VideoTile({
   video,
   isSelected,
   onToggle,
+  onPreview,
 }: {
   video: any;
   isSelected: boolean;
   onToggle: (uri: string) => void;
+  onPreview: () => void;
 }) {
   const {theme} = useTheme();
   return (
@@ -63,7 +68,9 @@ const VideoTile = React.memo(function VideoTile({
       entering={FadeIn.duration(180)}
       style={[styles.tile, {backgroundColor: theme.colors.surfaceVariant}]}>
       <TouchableOpacity
-        onPress={() => onToggle(video.node.image.uri)}
+        onPress={onPreview}
+        onLongPress={() => onToggle(video.node.image.uri)}
+        delayLongPress={280}
         activeOpacity={0.9}
         style={styles.tileTouchable}>
         <Image
@@ -141,8 +148,10 @@ export default function VideosScreen() {
   const {theme} = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Nav>();
+  const queryClient = useQueryClient();
 
   const [selectedUris, setSelectedUris] = useState<Set<string>>(new Set());
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState<SortOrder>(DEFAULT_SORT);
   const [filter, setFilter] = useState<MediaFilter>(DEFAULT_FILTER);
@@ -209,6 +218,32 @@ export default function VideosScreen() {
     sortOrder,
     filter,
   });
+
+  const previewItems: MediaPreviewItem[] = useMemo(
+    () =>
+      sortedVideos.map(v => ({
+        uri: v.node.image.uri,
+        type: 'video' as const,
+        filename: v.node.image.filename ?? undefined,
+        fileSize: v.node.image.fileSize ?? undefined,
+        width: v.node.image.width ?? undefined,
+        height: v.node.image.height ?? undefined,
+        playableDuration: v.node.image.playableDuration ?? undefined,
+      })),
+    [sortedVideos],
+  );
+
+  const handleDeleted = useCallback(
+    (uri: string) => {
+      setSelectedUris(prev => {
+        const next = new Set(prev);
+        next.delete(uri);
+        return next;
+      });
+      queryClient.invalidateQueries({queryKey: ['videos']});
+    },
+    [queryClient],
+  );
 
   const filterActive = isFilterActive(filter);
 
@@ -353,11 +388,12 @@ export default function VideosScreen() {
           ]}
           columnWrapperStyle={{gap: 8}}
           ItemSeparatorComponent={() => <View style={{height: 8}} />}
-          renderItem={({item}) => (
+          renderItem={({item, index}) => (
             <VideoTile
               video={item}
               isSelected={selectedUris.has(item.node.image.uri)}
               onToggle={toggleSelection}
+              onPreview={() => setPreviewIndex(index)}
             />
           )}
           showsVerticalScrollIndicator={false}
@@ -377,22 +413,42 @@ export default function VideosScreen() {
         />
       )}
 
-      {/* FAB */}
+      {/* Floating dual-action selection bar */}
       {selectedUris.size > 0 && (
         <Animated.View
           entering={FadeInDown.springify()}
-          style={[styles.fab, {bottom: insets.bottom + 76}]}>
-          <AnimatedButton
-            onPress={handleCompress}
-            variant="primary"
-            gradient
-            size="lg"
-            fullWidth>
-            <Icon name="zip-box" size={20} color="white" />
-            <Text style={[theme.typography.titleSmall, {color: 'white'}]}>
-              Compress {selectedUris.size} Video{selectedUris.size > 1 ? 's' : ''}
+          style={[
+            styles.fabBarContainer,
+            {
+              bottom: insets.bottom + 76,
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+            },
+          ]}>
+          <TouchableOpacity
+            style={[styles.actionBtnHalf, {backgroundColor: theme.colors.primary}]}
+            activeOpacity={0.85}
+            onPress={handleCompress}>
+            <Icon name="zip-box" size={18} color="white" />
+            <Text style={[theme.typography.titleSmall, {color: 'white', fontWeight: '700'}]}>
+              Compress ({selectedUris.size})
             </Text>
-          </AnimatedButton>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionBtnHalf, {backgroundColor: '#8B5CF6'}]}
+            activeOpacity={0.85}
+            onPress={() => {
+              navigation.navigate('FormatConverter', {
+                selectedUris: Array.from(selectedUris),
+                mediaType: 'video',
+              });
+            }}>
+            <Icon name="file-replace-outline" size={18} color="white" />
+            <Text style={[theme.typography.titleSmall, {color: 'white', fontWeight: '700'}]}>
+              Convert ({selectedUris.size})
+            </Text>
+          </TouchableOpacity>
         </Animated.View>
       )}
 
@@ -404,6 +460,16 @@ export default function VideosScreen() {
         onChangeSort={setSortOrder}
         onChangeFilter={setFilter}
         onClose={() => setShowSortFilter(false)}
+      />
+
+      <MediaPreviewModal
+        visible={previewIndex !== null}
+        items={previewItems}
+        initialIndex={previewIndex ?? 0}
+        onClose={() => setPreviewIndex(null)}
+        onDeleted={handleDeleted}
+        selectedUris={selectedUris}
+        onToggleSelect={toggleSelection}
       />
     </View>
   );
@@ -524,9 +590,30 @@ const styles = StyleSheet.create({
     padding: 10,
     gap: 2,
   },
-  fab: {
+  fabBarContainer: {
     position: 'absolute',
     left: 20,
     right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  actionBtnHalf: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 14,
+    gap: 8,
   },
 });

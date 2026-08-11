@@ -20,7 +20,7 @@ import Animated, {
   FadeInDown,
 } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import {useInfiniteQuery} from '@tanstack/react-query';
+import {useInfiniteQuery, useQueryClient} from '@tanstack/react-query';
 import {CameraRoll, PhotoIdentifier} from '@react-native-camera-roll/camera-roll';
 import {request, PERMISSIONS, RESULTS} from 'react-native-permissions';
 
@@ -30,6 +30,9 @@ import EmptyState from '../../shared/components/EmptyState';
 import AnimatedButton from '../../shared/components/AnimatedButton';
 import Loader from '../../shared/components/Loader';
 import SortFilterSheet from '../../shared/components/SortFilterSheet';
+import MediaPreviewModal, {
+  MediaPreviewItem,
+} from '../../shared/components/MediaPreviewModal';
 import {StorageService} from '../../shared/services/StorageService';
 import {
   SortOrder,
@@ -53,10 +56,12 @@ const ImageTile = React.memo(function ImageTile({
   photo,
   isSelected,
   onToggle,
+  onPreview,
 }: {
   photo: PhotoIdentifier;
   isSelected: boolean;
   onToggle: (uri: string) => void;
+  onPreview: () => void;
 }) {
   const {theme} = useTheme();
   const scale = useSharedValue(1);
@@ -65,7 +70,7 @@ const ImageTile = React.memo(function ImageTile({
     scale.value = withSpring(0.95, {damping: 20, stiffness: 300}, () => {
       scale.value = withSpring(1);
     });
-    onToggle(photo.node.image.uri);
+    onPreview();
   };
 
   const animStyle = useAnimatedStyle(() => ({
@@ -78,6 +83,8 @@ const ImageTile = React.memo(function ImageTile({
       style={[styles.tile, animStyle]}>
       <TouchableOpacity
         onPress={handlePress}
+        onLongPress={() => onToggle(photo.node.image.uri)}
+        delayLongPress={280}
         activeOpacity={0.9}
         style={styles.tileTouchable}>
         <Image
@@ -125,8 +132,10 @@ export default function ImagesScreen() {
   const {theme} = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Nav>();
+  const queryClient = useQueryClient();
 
   const [selectedUris, setSelectedUris] = useState<Set<string>>(new Set());
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState<SortOrder>(DEFAULT_SORT);
   const [filter, setFilter] = useState<MediaFilter>(DEFAULT_FILTER);
@@ -208,6 +217,31 @@ export default function ImagesScreen() {
     sortOrder,
     filter,
   });
+
+  const previewItems: MediaPreviewItem[] = useMemo(
+    () =>
+      sortedPhotos.map(p => ({
+        uri: p.node.image.uri,
+        type: 'image' as const,
+        filename: p.node.image.filename ?? undefined,
+        fileSize: p.node.image.fileSize ?? undefined,
+        width: p.node.image.width ?? undefined,
+        height: p.node.image.height ?? undefined,
+      })),
+    [sortedPhotos],
+  );
+
+  const handleDeleted = useCallback(
+    (uri: string) => {
+      setSelectedUris(prev => {
+        const next = new Set(prev);
+        next.delete(uri);
+        return next;
+      });
+      queryClient.invalidateQueries({queryKey: ['images']});
+    },
+    [queryClient],
+  );
 
   const filterActive = isFilterActive(filter);
   const selectedCount = selectedUris.size;
@@ -346,11 +380,12 @@ export default function ImagesScreen() {
           ]}
           columnWrapperStyle={{gap: GRID_GAP}}
           ItemSeparatorComponent={() => <View style={{height: GRID_GAP}} />}
-          renderItem={({item}) => (
+          renderItem={({item, index}) => (
             <ImageTile
               photo={item}
               isSelected={selectedUris.has(item.node.image.uri)}
               onToggle={toggleSelection}
+              onPreview={() => setPreviewIndex(index)}
             />
           )}
           showsVerticalScrollIndicator={false}
@@ -377,26 +412,42 @@ export default function ImagesScreen() {
         />
       )}
 
-      {/* Floating compress button */}
+      {/* Floating dual-action selection bar */}
       {selectedCount > 0 && (
         <Animated.View
           entering={FadeInDown.springify()}
           style={[
-            styles.fab,
-            {bottom: insets.bottom + 76},
+            styles.fabBarContainer,
+            {
+              bottom: insets.bottom + 76,
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+            },
           ]}>
-          <AnimatedButton
-            onPress={handleCompress}
-            variant="primary"
-            gradient
-            size="lg"
-            style={styles.fabButton}>
-            <Icon name="zip-box" size={20} color="white" />
-            <Text
-              style={[theme.typography.titleSmall, {color: 'white'}]}>
-              Compress {selectedCount} Image{selectedCount > 1 ? 's' : ''}
+          <TouchableOpacity
+            style={[styles.actionBtnHalf, {backgroundColor: theme.colors.primary}]}
+            activeOpacity={0.85}
+            onPress={handleCompress}>
+            <Icon name="zip-box" size={18} color="white" />
+            <Text style={[theme.typography.titleSmall, {color: 'white', fontWeight: '700'}]}>
+              Compress ({selectedCount})
             </Text>
-          </AnimatedButton>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionBtnHalf, {backgroundColor: '#8B5CF6'}]}
+            activeOpacity={0.85}
+            onPress={() => {
+              navigation.navigate('FormatConverter', {
+                selectedUris: Array.from(selectedUris),
+                mediaType: 'image',
+              });
+            }}>
+            <Icon name="file-replace-outline" size={18} color="white" />
+            <Text style={[theme.typography.titleSmall, {color: 'white', fontWeight: '700'}]}>
+              Convert ({selectedCount})
+            </Text>
+          </TouchableOpacity>
         </Animated.View>
       )}
 
@@ -409,12 +460,48 @@ export default function ImagesScreen() {
         onChangeFilter={setFilter}
         onClose={() => setShowSortFilter(false)}
       />
+
+      <MediaPreviewModal
+        visible={previewIndex !== null}
+        items={previewItems}
+        initialIndex={previewIndex ?? 0}
+        onClose={() => setPreviewIndex(null)}
+        onDeleted={handleDeleted}
+        selectedUris={selectedUris}
+        onToggleSelect={toggleSelection}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: {flex: 1},
+  fabBarContainer: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  actionBtnHalf: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 14,
+    gap: 8,
+  },
   header: {
     paddingHorizontal: 20,
     paddingBottom: 12,

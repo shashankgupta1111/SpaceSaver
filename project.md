@@ -340,6 +340,20 @@ e.g. the HEIC/Fresco one in build note #8, are not catchable here — those need
 
 ---
 
+## Image & Video Operation Modes
+
+| Mode | Quality | Dimensions / Resolution | Target Formats | Purpose |
+|------|---------|-------------------------|----------------|---------|
+| **Compress & Save Space** | 30% – 90% | 480px – 1920px / 360p – 1080p | JPEG / PNG / WebP / MP4 | Maximum storage savings (quality reduction & resize) |
+| **Format Converter** | **100% (Lossless)** | **Original (Unscaled)** | JPEG / PNG / WebP / MP4 / MOV / MKV / WebM | Change file format **without quality reduction** |
+
+## Supported Formats
+
+- **Video Formats:** MP4 (`.mp4`), MOV (`.mov`), MKV (`.mkv`), WebM (`.webm`), 3GP (`.3gp`), AVI (`.avi`)
+- **Photo Formats:** JPEG (`.jpg`, `.jpeg`), PNG (`.png`), WebP (`.webp`), HEIC (`.heic`), GIF (`.gif`), BMP (`.bmp`), TIFF (`.tiff`)
+
+---
+
 ## Image Compression Presets
 
 | Level | Quality | Max Width | Format | Notes |
@@ -348,6 +362,7 @@ e.g. the HEIC/Fresco one in build note #8, are not catchable here — those need
 | Medium | 75% | 1280px | JPEG | Balanced |
 | High | 55% | 1080px | WebP | Best compression |
 | Custom | 30–100% | Any | JPEG/PNG/WebP | User-controlled |
+| Converter | 100% | Original | JPEG/PNG/WebP | Zero quality loss format conversion |
 
 ---
 

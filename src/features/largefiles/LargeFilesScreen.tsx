@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   View,
   Text,
@@ -12,16 +12,20 @@ import {useNavigation} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import Animated, {FadeInDown} from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import {useQuery} from '@tanstack/react-query';
+import {useQuery, useQueryClient} from '@tanstack/react-query';
 
 import {useTheme} from '../../app/theme/ThemeContext';
 import {RootStackParamList} from '../../app/navigation/types';
 import {MediaService, LargeFile} from '../../shared/services/MediaService';
 import {StorageService} from '../../shared/services/StorageService';
+import {useAlert} from '../../shared/components/AlertProvider';
 import HeaderBar from '../../shared/components/HeaderBar';
 import AnimatedButton from '../../shared/components/AnimatedButton';
 import EmptyState from '../../shared/components/EmptyState';
 import Loader from '../../shared/components/Loader';
+import MediaPreviewModal, {
+  MediaPreviewItem,
+} from '../../shared/components/MediaPreviewModal';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -37,6 +41,8 @@ export default function LargeFilesScreen() {
   const {theme} = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Nav>();
+  const alert = useAlert();
+  const queryClient = useQueryClient();
 
   const [permission, setPermission] = useState<'checking' | 'granted' | 'denied'>(
     'checking',
@@ -45,6 +51,8 @@ export default function LargeFilesScreen() {
   const [selectedType, setSelectedType] = useState<'image' | 'video' | null>(
     null,
   );
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -105,6 +113,80 @@ export default function LargeFilesScreen() {
     }
   };
 
+  const selectedBytes = useMemo(() => {
+    return files
+      .filter((f: LargeFile) => selected.has(f.uri))
+      .reduce((s: number, f: LargeFile) => s + f.fileSize, 0);
+  }, [files, selected]);
+
+  const previewItems: MediaPreviewItem[] = useMemo(
+    () =>
+      files.map((f: LargeFile) => ({
+        uri: f.uri,
+        type: f.type,
+        filename: f.filename,
+        fileSize: f.fileSize,
+        width: f.width,
+        height: f.height,
+        playableDuration: f.playableDuration,
+      })),
+    [files],
+  );
+
+  const handleDelete = () => {
+    const uris = Array.from(selected);
+    if (uris.length === 0) {
+      return;
+    }
+    alert({
+      title: `Delete ${uris.length} file${uris.length > 1 ? 's' : ''}?`,
+      message: `Frees ${StorageService.formatBytes(
+        selectedBytes,
+      )}. Android will ask you to confirm removal.`,
+      type: 'warning',
+      icon: 'trash-can-outline',
+      buttons: [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await MediaService.deleteAssets(uris);
+              setSelected(new Set());
+              setSelectedType(null);
+              queryClient.invalidateQueries({queryKey: ['largestMedia', TOP_N]});
+            } catch {
+              alert({
+                title: 'Delete failed',
+                message: 'Some files could not be removed.',
+                type: 'error',
+              });
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ],
+    });
+  };
+
+  const handlePreviewDeleted = useCallback(
+    (uri: string) => {
+      setSelected(prev => {
+        const next = new Set(prev);
+        next.delete(uri);
+        if (next.size === 0) {
+          setSelectedType(null);
+        }
+        return next;
+      });
+      queryClient.invalidateQueries({queryKey: ['largestMedia', TOP_N]});
+    },
+    [queryClient],
+  );
+
   const selectedCount = selected.size;
 
   return (
@@ -142,7 +224,7 @@ export default function LargeFilesScreen() {
             </Text>
             <Text
               style={[theme.typography.bodySmall, {color: theme.colors.textTertiary}]}>
-              Tap to select · compress to shrink them
+              Tap to preview · long-press to select
             </Text>
           </View>
 
@@ -161,7 +243,8 @@ export default function LargeFilesScreen() {
                 rank={index + 1}
                 selected={selected.has(item.uri)}
                 dimmed={selectedType !== null && selectedType !== item.type}
-                onPress={() => toggle(item)}
+                onPress={() => setPreviewIndex(index)}
+                onLongPress={() => toggle(item)}
               />
             )}
           />
@@ -169,24 +252,64 @@ export default function LargeFilesScreen() {
           {selectedCount > 0 && (
             <Animated.View
               entering={FadeInDown.springify()}
-              style={[styles.fab, {bottom: insets.bottom + 16}]}>
-              <AnimatedButton
-                onPress={handleCompress}
-                variant="primary"
-                gradient
-                size="lg"
-                fullWidth>
-                <Icon name="zip-box" size={20} color="white" />
-                <Text style={[theme.typography.titleSmall, {color: 'white'}]}>
-                  Compress {selectedCount}{' '}
-                  {selectedType === 'video' ? 'Video' : 'Photo'}
-                  {selectedCount > 1 ? 's' : ''}
-                </Text>
-              </AnimatedButton>
+              style={[
+                styles.footer,
+                {
+                  paddingBottom: insets.bottom + 12,
+                  backgroundColor: theme.colors.background,
+                  borderTopColor: theme.colors.borderLight,
+                },
+              ]}>
+              <Text
+                style={[
+                  theme.typography.labelLarge,
+                  {color: theme.colors.text, marginBottom: 8},
+                ]}>
+                {selectedCount} selected · {StorageService.formatBytes(selectedBytes)}
+              </Text>
+              <View style={styles.footerActions}>
+                <AnimatedButton
+                  onPress={handleCompress}
+                  variant="primary"
+                  gradient
+                  size="md"
+                  style={{flex: 1}}>
+                  <Icon name="zip-box" size={18} color="white" />
+                  <Text style={[theme.typography.titleSmall, {color: 'white'}]}>
+                    Compress
+                  </Text>
+                </AnimatedButton>
+                <AnimatedButton
+                  onPress={handleDelete}
+                  variant="danger"
+                  size="md"
+                  loading={deleting}
+                  style={{flex: 1}}>
+                  <Icon name="trash-can-outline" size={18} color="white" />
+                  <Text style={[theme.typography.titleSmall, {color: 'white'}]}>
+                    Delete
+                  </Text>
+                </AnimatedButton>
+              </View>
             </Animated.View>
           )}
         </>
       )}
+
+      <MediaPreviewModal
+        visible={previewIndex !== null}
+        items={previewItems}
+        initialIndex={previewIndex ?? 0}
+        onClose={() => setPreviewIndex(null)}
+        onDeleted={handlePreviewDeleted}
+        selectedUris={selected}
+        onToggleSelect={uri => {
+          const file = files.find((f: LargeFile) => f.uri === uri);
+          if (file) {
+            toggle(file);
+          }
+        }}
+      />
     </View>
   );
 }
@@ -197,12 +320,14 @@ function LargeRow({
   selected,
   dimmed,
   onPress,
+  onLongPress,
 }: {
   file: LargeFile;
   rank: number;
   selected: boolean;
   dimmed: boolean;
   onPress: () => void;
+  onLongPress: () => void;
 }) {
   const {theme} = useTheme();
   const meta =
@@ -215,6 +340,8 @@ function LargeRow({
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={onPress}
+        onLongPress={onLongPress}
+        delayLongPress={280}
         style={[
           styles.row,
           {
@@ -344,5 +471,18 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 20,
     right: 20,
+  },
+  footer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    borderTopWidth: 0.5,
+  },
+  footerActions: {
+    flexDirection: 'row',
+    gap: 10,
   },
 });

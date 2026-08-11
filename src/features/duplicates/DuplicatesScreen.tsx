@@ -24,6 +24,9 @@ import {useAlert} from '../../shared/components/AlertProvider';
 import HeaderBar from '../../shared/components/HeaderBar';
 import AnimatedButton from '../../shared/components/AnimatedButton';
 import Loader from '../../shared/components/Loader';
+import MediaPreviewModal, {
+  MediaPreviewItem,
+} from '../../shared/components/MediaPreviewModal';
 
 type Phase = 'idle' | 'scanning' | 'results';
 
@@ -39,6 +42,10 @@ export default function DuplicatesScreen() {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [toDelete, setToDelete] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [preview, setPreview] = useState<{
+    items: MediaPreviewItem[];
+    index: number;
+  } | null>(null);
 
   // uri -> photo, for size lookups on the selection.
   const photoIndex = useMemo(() => {
@@ -170,6 +177,44 @@ export default function DuplicatesScreen() {
     });
   }, [toDelete, selectedBytes, alert]);
 
+  const handlePreviewDeleted = useCallback((uri: string) => {
+    setToDelete(prev => {
+      const next = new Set(prev);
+      next.delete(uri);
+      return next;
+    });
+    setPreview(prev => {
+      if (!prev) {
+        return null;
+      }
+      const items = prev.items.filter(i => i.uri !== uri);
+      if (items.length === 0) {
+        return null;
+      }
+      return {
+        items,
+        index: Math.min(prev.index, items.length - 1),
+      };
+    });
+    setResult(prev => {
+      if (!prev) {
+        return prev;
+      }
+      const groups = prev.groups
+        .map(g => ({
+          ...g,
+          photos: g.photos.filter(p => p.uri !== uri),
+        }))
+        .filter(g => g.photos.length >= 2)
+        .map(g => rebuildGroup(g));
+      return {
+        ...prev,
+        groups,
+        totalReclaimable: groups.reduce((s, g) => s + g.reclaimable, 0),
+      };
+    });
+  }, []);
+
   /* ----------------------------- render ----------------------------- */
 
   return (
@@ -197,9 +242,21 @@ export default function DuplicatesScreen() {
           selectedBytes={selectedBytes}
           deleting={deleting}
           onDelete={confirmDelete}
+          onPreview={(items, index) => setPreview({items, index})}
           bottomInset={insets.bottom}
         />
       )}
+
+      <MediaPreviewModal
+        visible={preview !== null}
+        items={preview?.items ?? []}
+        initialIndex={preview?.index ?? 0}
+        onClose={() => setPreview(null)}
+        onDeleted={handlePreviewDeleted}
+        selectedUris={toDelete}
+        onToggleSelect={toggle}
+        selectLabel="Mark to delete"
+      />
     </View>
   );
 }
@@ -306,6 +363,7 @@ function ResultsState({
   selectedBytes,
   deleting,
   onDelete,
+  onPreview,
   bottomInset,
 }: {
   result: ScanResult;
@@ -315,6 +373,7 @@ function ResultsState({
   selectedBytes: number;
   deleting: boolean;
   onDelete: () => void;
+  onPreview: (items: MediaPreviewItem[], index: number) => void;
   bottomInset: number;
 }) {
   const {theme} = useTheme();
@@ -384,6 +443,7 @@ function ResultsState({
             index={i}
             toDelete={toDelete}
             onToggle={onToggle}
+            onPreview={onPreview}
           />
         ))}
       </ScrollView>
@@ -422,14 +482,26 @@ function GroupCard({
   index,
   toDelete,
   onToggle,
+  onPreview,
 }: {
   group: DuplicateGroup;
   index: number;
   toDelete: Set<string>;
   onToggle: (uri: string) => void;
+  onPreview: (items: MediaPreviewItem[], index: number) => void;
 }) {
   const {theme} = useTheme();
   const isExact = group.kind === 'exact';
+
+  const previewItems: MediaPreviewItem[] = group.photos.map(p => ({
+    uri: p.uri,
+    type: 'image' as const,
+    filename: p.filename,
+    fileSize: p.fileSize,
+    width: p.width,
+    height: p.height,
+  }));
+
   return (
     <Animated.View
       entering={FadeInDown.delay(Math.min(index, 8) * 40).springify()}
@@ -472,14 +544,16 @@ function GroupCard({
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.thumbRow}>
-        {group.photos.map(photo => {
+        {group.photos.map((photo, photoIndex) => {
           const isKeeper = photo.uri === group.keeperUri;
           const marked = toDelete.has(photo.uri);
           return (
             <TouchableOpacity
               key={photo.uri}
               activeOpacity={0.85}
-              onPress={() => onToggle(photo.uri)}
+              onPress={() => onPreview(previewItems, photoIndex)}
+              onLongPress={() => onToggle(photo.uri)}
+              delayLongPress={280}
               style={styles.thumbWrap}>
               <Image
                 source={{uri: photo.uri}}

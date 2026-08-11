@@ -24,6 +24,9 @@ import {useAlert} from '../../shared/components/AlertProvider';
 import HeaderBar from '../../shared/components/HeaderBar';
 import AnimatedButton from '../../shared/components/AnimatedButton';
 import Loader from '../../shared/components/Loader';
+import MediaPreviewModal, {
+  MediaPreviewItem,
+} from '../../shared/components/MediaPreviewModal';
 
 type Route = RouteProp<RootStackParamList, 'AlbumDetail'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -44,6 +47,7 @@ export default function AlbumDetailScreen() {
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
   const {data: media = [], isLoading} = useQuery({
     queryKey: ['albumMedia', albumTitle],
@@ -131,6 +135,34 @@ export default function AlbumDetailScreen() {
   const canCompress = allImages || allVideos;
   const selectedCount = selected.size;
 
+  const previewItems: MediaPreviewItem[] = useMemo(
+    () =>
+      media.map((f: LargeFile) => ({
+        uri: f.uri,
+        type: f.type,
+        filename: f.filename,
+        fileSize: f.fileSize,
+        width: f.width,
+        height: f.height,
+        playableDuration: f.playableDuration,
+      })),
+    [media],
+  );
+
+  const handlePreviewDeleted = useCallback(
+    (uri: string) => {
+      setSelected(prev => {
+        const next = new Set(prev);
+        next.delete(uri);
+        return next;
+      });
+      queryClient.invalidateQueries({queryKey: ['albumMedia', albumTitle]});
+      queryClient.invalidateQueries({queryKey: ['albums']});
+      queryClient.invalidateQueries({queryKey: ['largestMedia', 20]});
+    },
+    [queryClient, albumTitle],
+  );
+
   return (
     <View
       style={[
@@ -190,7 +222,8 @@ export default function AlbumDetailScreen() {
                 file={item}
                 index={index}
                 selected={selected.has(item.uri)}
-                onPress={() => toggle(item.uri)}
+                onPress={() => setPreviewIndex(index)}
+                onLongPress={() => toggle(item.uri)}
               />
             )}
           />
@@ -232,6 +265,16 @@ export default function AlbumDetailScreen() {
           </View>
         </Animated.View>
       )}
+
+      <MediaPreviewModal
+        visible={previewIndex !== null}
+        items={previewItems}
+        initialIndex={previewIndex ?? 0}
+        onClose={() => setPreviewIndex(null)}
+        onDeleted={handlePreviewDeleted}
+        selectedUris={selected}
+        onToggleSelect={toggle}
+      />
     </View>
   );
 }
@@ -241,16 +284,23 @@ function Tile({
   index,
   selected,
   onPress,
+  onLongPress,
 }: {
   file: LargeFile;
   index: number;
   selected: boolean;
   onPress: () => void;
+  onLongPress: () => void;
 }) {
   const {theme} = useTheme();
   return (
     <Animated.View entering={FadeInDown.delay(Math.min(index, 12) * 15).springify()}>
-      <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={styles.tile}>
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={onPress}
+        onLongPress={onLongPress}
+        delayLongPress={280}
+        style={styles.tile}>
         <Image
           source={{uri: file.uri}}
           style={styles.tileImg}
