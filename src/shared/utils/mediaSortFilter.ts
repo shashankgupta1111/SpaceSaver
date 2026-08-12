@@ -73,11 +73,22 @@ function matchesSize(sizeBytes: number, bucket: SizeBucket): boolean {
   }
 }
 
-function matchesFormat(filename: string, format: ImageFormat): boolean {
+function getFilenameAndExtension(filename?: string | null, uri?: string): {filename: string; ext: string} {
+  let name = filename ?? '';
+  if (!name && uri) {
+    name = uri.split('/').pop()?.split('?')[0] ?? '';
+  }
+  const cleanName = name.split('?')[0] ?? '';
+  const parts = cleanName.split('.');
+  const ext = parts.length > 1 ? (parts.pop()?.toLowerCase() ?? '') : '';
+  return {filename: name, ext};
+}
+
+function matchesFormat(filename: string, format: ImageFormat, uri?: string): boolean {
   if (format === 'all') {
     return true;
   }
-  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+  const {ext} = getFilenameAndExtension(filename, uri);
   switch (format) {
     case 'jpeg':
       return ext === 'jpg' || ext === 'jpeg';
@@ -98,16 +109,16 @@ function matchesFormat(filename: string, format: ImageFormat): boolean {
   }
 }
 
-function matchesVideoFormat(filename: string, format: VideoFormat): boolean {
+function matchesVideoFormat(filename: string, format: VideoFormat, uri?: string): boolean {
   if (format === 'all') {
     return true;
   }
-  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+  const {ext} = getFilenameAndExtension(filename, uri);
   switch (format) {
     case 'mp4':
       return ext === 'mp4' || ext === 'm4v';
     case 'mov':
-      return ext === 'mov' || ext === 'qt';
+      return ext === 'mov' || ext === 'qt' || ext === 'quicktime';
     case 'mkv':
       return ext === 'mkv';
     case 'webm':
@@ -163,7 +174,7 @@ export function sortAndFilter(
 
   const filtered = edges.filter(edge => {
     const img = edge.node.image;
-    const filename = img.filename ?? '';
+    const {filename} = getFilenameAndExtension(img.filename, img.uri);
     const size = img.fileSize ?? 0;
 
     if (query && !filename.toLowerCase().includes(query)) {
@@ -172,12 +183,12 @@ export function sortAndFilter(
     if (!matchesSize(size, filter.size)) {
       return false;
     }
-    if (type === 'image' && !matchesFormat(filename, filter.format)) {
+    if (type === 'image' && !matchesFormat(img.filename ?? '', filter.format, img.uri)) {
       return false;
     }
     if (
       type === 'video' &&
-      !matchesVideoFormat(filename, filter.videoFormat ?? 'all')
+      !matchesVideoFormat(img.filename ?? '', filter.videoFormat ?? 'all', img.uri)
     ) {
       return false;
     }

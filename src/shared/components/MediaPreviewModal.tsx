@@ -19,6 +19,7 @@ import {useTheme} from '../../app/theme/ThemeContext';
 import {MediaService} from '../services/MediaService';
 import {StorageService} from '../services/StorageService';
 import {useAlert} from './AlertProvider';
+import {VideoThumbnail} from './VideoThumbnail';
 import Loader from './Loader';
 
 const {width: SCREEN_W, height: SCREEN_H} = Dimensions.get('window');
@@ -184,11 +185,10 @@ export default function MediaPreviewModal({
                   activeOpacity={0.9}
                   onPress={playVideo}
                   style={styles.videoWrap}>
-                  <Image
-                    source={{uri: it.uri}}
+                  <VideoThumbnail
+                    videoUri={it.uri}
                     style={styles.media}
                     resizeMode="contain"
-                    resizeMethod="resize"
                   />
                   <View style={styles.playOverlay}>
                     <View style={styles.playBtn}>
@@ -233,41 +233,6 @@ export default function MediaPreviewModal({
                   ? ` · ${formatDuration(item.playableDuration)}`
                   : ''}
               </Text>
-            </View>
-
-            <View style={styles.actions}>
-              {canSelect && (
-                <TouchableOpacity
-                  onPress={() => onToggleSelect!(item.uri)}
-                  style={[
-                    styles.actionBtn,
-                    isSelected && {backgroundColor: theme.colors.primary},
-                  ]}>
-                  <Icon
-                    name={isSelected ? 'check-circle' : 'checkbox-blank-circle-outline'}
-                    size={20}
-                    color="white"
-                  />
-                  <Text style={styles.actionText}>
-                    {isSelected ? 'Selected' : selectLabel}
-                  </Text>
-                </TouchableOpacity>
-              )}
-              {canDelete && (
-                <TouchableOpacity
-                  onPress={handleDelete}
-                  disabled={deleting}
-                  style={[styles.actionBtn, styles.deleteBtn]}>
-                  {deleting ? (
-                    <Loader size={20} strokeWidth={2.5} />
-                  ) : (
-                    <>
-                      <Icon name="trash-can-outline" size={20} color="white" />
-                      <Text style={styles.actionText}>Delete</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              )}
             </View>
           </Animated.View>
         )}

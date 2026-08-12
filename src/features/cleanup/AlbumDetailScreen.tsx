@@ -24,6 +24,7 @@ import {useAlert} from '../../shared/components/AlertProvider';
 import HeaderBar from '../../shared/components/HeaderBar';
 import AnimatedButton from '../../shared/components/AnimatedButton';
 import Loader from '../../shared/components/Loader';
+import {VideoThumbnail} from '../../shared/components/VideoThumbnail';
 import MediaPreviewModal, {
   MediaPreviewItem,
 } from '../../shared/components/MediaPreviewModal';
@@ -301,12 +302,20 @@ function Tile({
         onLongPress={onLongPress}
         delayLongPress={280}
         style={styles.tile}>
-        <Image
-          source={{uri: file.uri}}
-          style={styles.tileImg}
-          resizeMode="cover"
-          resizeMethod="resize"
-        />
+        {file.type === 'video' ? (
+          <VideoThumbnail
+            videoUri={file.uri}
+            style={styles.tileImg}
+            resizeMode="cover"
+          />
+        ) : (
+          <Image
+            source={{uri: file.uri}}
+            style={styles.tileImg}
+            resizeMode="cover"
+            resizeMethod="resize"
+          />
+        )}
         {selected && (
           <View style={[styles.tileOverlay, {backgroundColor: 'rgba(91,95,239,0.5)'}]} />
         )}

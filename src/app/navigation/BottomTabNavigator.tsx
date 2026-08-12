@@ -10,6 +10,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
+
 import {BottomTabParamList} from './types';
 import {useTheme} from '../theme/ThemeContext';
 import HomeScreen from '../../features/home/HomeScreen';
@@ -91,6 +93,10 @@ function TabIcon({name, focused, color, label}: TabIconProps) {
 
 export default function BottomTabNavigator() {
   const {theme} = useTheme();
+  const insets = useSafeAreaInsets();
+
+  const tabBarHeight = 64 + (insets.bottom > 0 ? insets.bottom : 8);
+  const tabBarPaddingBottom = insets.bottom > 0 ? insets.bottom + 4 : 8;
 
   return (
     <Tab.Navigator
@@ -101,6 +107,8 @@ export default function BottomTabNavigator() {
           {
             backgroundColor: theme.colors.tabBarBackground,
             borderTopColor: theme.colors.tabBarBorder,
+            height: tabBarHeight,
+            paddingBottom: tabBarPaddingBottom,
           },
         ],
         tabBarShowLabel: false,

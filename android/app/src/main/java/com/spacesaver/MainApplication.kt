@@ -20,6 +20,7 @@ class MainApplication : Application(), ReactApplication {
             PackageList(this).packages.apply {
               add(ForegroundServicePackage())
               add(PerceptualHashPackage())
+              add(VideoThumbnailPackage())
             }
 
         override fun getJSMainModuleName(): String = "index"

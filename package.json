@@ -14,7 +14,8 @@
     "build-release": "cd android && ./gradlew app:assembleRelease",
     "install-apk": "adb install -r -g android/app/build/outputs/apk/release/app-release.apk",
     "install-debug": "adb install -r -g android/app/build/outputs/apk/debug/app-debug.apk",
-    "clean": "cd android && ./gradlew clean"
+    "clean": "node -e \"['android/app/.cxx','android/app/build','android/.gradle'].forEach(p=>require('fs').rmSync(p,{recursive:true,force:true}))\" && cd android && ./gradlew clean",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@react-native-camera-roll/camera-roll": "^7.8.0",
@@ -62,6 +63,7 @@
     "@types/react-native-vector-icons": "^6.4.18",
     "babel-plugin-module-resolver": "^5.0.3",
     "eslint": "^8.57.0",
+    "patch-package": "^8.0.0",
     "typescript": "5.0.4"
   },
   "jest": {

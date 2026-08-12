@@ -10,7 +10,7 @@ import {
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import Animated, {FadeInDown, FadeIn} from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import {request, PERMISSIONS, RESULTS} from 'react-native-permissions';
+import {PermissionService} from '../../shared/services/PermissionService';
 
 import {useTheme} from '../../app/theme/ThemeContext';
 import {StorageService} from '../../shared/services/StorageService';
@@ -27,6 +27,7 @@ import Loader from '../../shared/components/Loader';
 import MediaPreviewModal, {
   MediaPreviewItem,
 } from '../../shared/components/MediaPreviewModal';
+import {VideoThumbnail} from '../../shared/components/VideoThumbnail';
 
 type Phase = 'idle' | 'scanning' | 'results';
 
@@ -63,8 +64,8 @@ export default function DuplicatesScreen() {
   }, [toDelete, photoIndex]);
 
   const runScan = useCallback(async () => {
-    const perm = await request(PERMISSIONS.ANDROID.READ_MEDIA_IMAGES);
-    if (perm !== RESULTS.GRANTED) {
+    const permGranted = await PermissionService.ensureImagePermission();
+    if (!permGranted) {
       alert({
         title: 'Permission needed',
         message: 'SpaceSaver needs access to your photos to find duplicates.',
@@ -555,12 +556,20 @@ function GroupCard({
               onLongPress={() => onToggle(photo.uri)}
               delayLongPress={280}
               style={styles.thumbWrap}>
-              <Image
-                source={{uri: photo.uri}}
-                style={styles.thumb}
-                resizeMode="cover"
-                resizeMethod="resize"
-              />
+              {(photo as any).type === 'video' || photo.uri.toLowerCase().includes('.mov') || photo.uri.toLowerCase().includes('.mp4') ? (
+                <VideoThumbnail
+                  videoUri={photo.uri}
+                  style={styles.thumb}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Image
+                  source={{uri: photo.uri}}
+                  style={styles.thumb}
+                  resizeMode="cover"
+                  resizeMethod="resize"
+                />
+              )}
               {marked && (
                 <View style={[styles.thumbOverlay, {backgroundColor: 'rgba(239,68,68,0.35)'}]} />
               )}

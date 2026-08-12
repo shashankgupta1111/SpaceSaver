@@ -16,7 +16,9 @@ import Animated, {FadeIn, FadeInDown} from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {useInfiniteQuery, useQueryClient} from '@tanstack/react-query';
 import {CameraRoll} from '@react-native-camera-roll/camera-roll';
-import {request, PERMISSIONS, RESULTS} from 'react-native-permissions';
+import {PermissionService} from '../../shared/services/PermissionService';
+
+import {VideoThumbnail} from '../../shared/components/VideoThumbnail';
 
 import {useTheme} from '../../app/theme/ThemeContext';
 import {RootStackParamList} from '../../app/navigation/types';
@@ -28,6 +30,7 @@ import SortFilterSheet from '../../shared/components/SortFilterSheet';
 import MediaPreviewModal, {
   MediaPreviewItem,
 } from '../../shared/components/MediaPreviewModal';
+import {useAlert} from '../../shared/components/AlertProvider';
 import {
   SortOrder,
   MediaFilter,
@@ -63,6 +66,11 @@ const VideoTile = React.memo(function VideoTile({
   onPreview: () => void;
 }) {
   const {theme} = useTheme();
+  const uriFilename = video.node.image.uri ? video.node.image.uri.split('/').pop()?.split('?')[0] : null;
+  const displayFilename = video.node.image.filename || uriFilename || 'Video';
+  const extMatch = displayFilename.match(/\.([a-z0-9]+)$/i);
+  const formatTag = extMatch ? extMatch[1].toUpperCase() : 'MP4';
+
   return (
     <Animated.View
       entering={FadeIn.duration(180)}
@@ -73,11 +81,10 @@ const VideoTile = React.memo(function VideoTile({
         delayLongPress={280}
         activeOpacity={0.9}
         style={styles.tileTouchable}>
-        <Image
-          source={{uri: video.node.image.uri}}
+        <VideoThumbnail
+          videoUri={video.node.image.uri}
           style={styles.tileThumb}
           resizeMode="cover"
-          resizeMethod="resize"
         />
         {isSelected && (
           <View
@@ -88,22 +95,19 @@ const VideoTile = React.memo(function VideoTile({
           />
         )}
 
+        {/* Format tag badge */}
+        <View style={styles.formatBadge}>
+          <Text style={styles.formatText}>{formatTag}</Text>
+        </View>
+
         {/* Play overlay */}
         <View style={styles.playOverlay}>
           <View
             style={[
               styles.playBtn,
-              {
-                backgroundColor: isSelected
-                  ? theme.colors.primary
-                  : 'rgba(0,0,0,0.55)',
-              },
+              {backgroundColor: 'rgba(0,0,0,0.55)'},
             ]}>
-            {isSelected ? (
-              <Icon name="check" size={16} color="white" />
-            ) : (
-              <Icon name="play" size={16} color="white" />
-            )}
+            <Icon name="play" size={16} color="white" />
           </View>
         </View>
 
@@ -124,12 +128,34 @@ const VideoTile = React.memo(function VideoTile({
         )}
       </TouchableOpacity>
 
+      {/* Top-right selection circle touchable */}
+      <TouchableOpacity
+        onPress={() => onToggle(video.node.image.uri)}
+        hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+        activeOpacity={0.8}
+        style={styles.checkCircleTouchable}>
+        <View
+          style={[
+            styles.checkCircle,
+            isSelected
+              ? {backgroundColor: theme.colors.primary, borderColor: 'white'}
+              : {
+                  backgroundColor: 'rgba(0,0,0,0.35)',
+                  borderColor: 'rgba(255,255,255,0.85)',
+                },
+          ]}>
+          {isSelected && (
+            <Icon name="check" size={12} color="white" />
+          )}
+        </View>
+      </TouchableOpacity>
+
       {/* Info bar */}
       <View style={[styles.tileInfo, {backgroundColor: theme.colors.surface}]}>
         <Text
           style={[theme.typography.labelSmall, {color: theme.colors.text}]}
           numberOfLines={1}>
-          {video.node.image.filename ?? 'Video'}
+          {displayFilename}
         </Text>
         <Text
           style={[
@@ -161,17 +187,20 @@ export default function VideosScreen() {
   const {
     data,
     isLoading,
-    refetch,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    refetch,
+    isRefetching,
   } = useInfiniteQuery({
     queryKey: ['videos'],
     initialPageParam: undefined as string | undefined,
     queryFn: async ({pageParam}) => {
       if (!pageParam) {
-        const perm = await request(PERMISSIONS.ANDROID.READ_MEDIA_VIDEO);
-        if (perm !== RESULTS.GRANTED) {throw new Error('Permission denied');}
+        const granted = await PermissionService.ensureVideoPermission();
+        if (!granted) {
+          throw new Error('Permission denied');
+        }
       }
       return CameraRoll.getPhotos({
         first: PAGE_SIZE,
@@ -205,10 +234,45 @@ export default function VideosScreen() {
     });
   }, []);
 
+  const alert = useAlert();
+
   const handleCompress = () => {
     if (selectedUris.size === 0) {return;}
     navigation.navigate('VideoCompression', {
       selectedUris: Array.from(selectedUris),
+    });
+  };
+
+  const handleDelete = () => {
+    if (selectedUris.size === 0) return;
+    const count = selectedUris.size;
+    const uris = Array.from(selectedUris);
+
+    alert({
+      title: `Delete ${count} ${count > 1 ? 'Videos' : 'Video'}?`,
+      message: 'Selected file(s) will be permanently removed from your device gallery.',
+      type: 'warning',
+      icon: 'trash-can-outline',
+      buttons: [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await CameraRoll.deletePhotos(uris);
+              setSelectedUris(new Set());
+              queryClient.invalidateQueries({queryKey: ['videos']});
+            } catch (err) {
+              alert({
+                title: 'Delete Failed',
+                message: 'Could not delete selected files.',
+                type: 'error',
+              });
+            }
+          },
+        },
+      ],
     });
   };
 
@@ -286,24 +350,65 @@ export default function VideosScreen() {
           </View>
         ) : (
           <View style={styles.headerTop}>
-            <View>
+            <View style={{flex: 1, marginRight: 8}}>
               <Text
-                style={[theme.typography.titleLarge, {color: theme.colors.text}]}>
+                style={[theme.typography.titleLarge, {color: theme.colors.text}]}
+                numberOfLines={1}>
                 Videos
               </Text>
-              {videos.length > 0 && (
+              {selectedUris.size > 0 ? (
+                <TouchableOpacity
+                  style={{flexDirection: 'row', alignItems: 'center', gap: 4}}
+                  onPress={() => setSelectedUris(new Set())}>
+                  <Text
+                    style={[
+                      theme.typography.bodySmall,
+                      {color: theme.colors.primary, fontWeight: '700'},
+                    ]}>
+                    {selectedUris.size} selected · Clear
+                  </Text>
+                  <Icon name="close" size={14} color={theme.colors.primary} />
+                </TouchableOpacity>
+              ) : videos.length > 0 ? (
                 <Text
                   style={[
                     theme.typography.bodySmall,
                     {color: theme.colors.textSecondary},
-                  ]}>
+                  ]}
+                  numberOfLines={1}>
                   {filterActive || searchQuery
                     ? `${sortedVideos.length} of ${videos.length} videos`
                     : `${videos.length}${hasNextPage ? '+' : ''} videos`}
                 </Text>
-              )}
+              ) : null}
             </View>
             <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={[styles.iconBtn, {backgroundColor: theme.colors.surfaceVariant}]}
+                onPress={() => refetch()}>
+                <Icon name="refresh" size={20} color={theme.colors.text} />
+              </TouchableOpacity>
+              {selectedUris.size > 0 && (
+                <TouchableOpacity
+                  style={[
+                    styles.iconBtn,
+                    {backgroundColor: theme.colors.errorContainer},
+                  ]}
+                  onPress={handleDelete}>
+                  <Icon
+                    name="trash-can-outline"
+                    size={20}
+                    color={theme.colors.error}
+                  />
+                </TouchableOpacity>
+              )}
+              {selectedUris.size > 0 && (
+                <TouchableOpacity
+                  style={[styles.iconBtn, {backgroundColor: theme.colors.primaryContainer}]}
+                  onPress={() => setSelectedUris(new Set())}>
+                  <Icon name="close-circle-outline" size={20} color={theme.colors.primary} />
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={[styles.iconBtn, {backgroundColor: theme.colors.surfaceVariant}]}
                 onPress={() => setShowSearch(true)}>
@@ -345,26 +450,7 @@ export default function VideosScreen() {
         )}
       </View>
 
-      {/* Selection bar */}
-      {selectedUris.size > 0 && (
-        <Animated.View
-          entering={FadeInDown.springify()}
-          style={[
-            styles.selectionBar,
-            {backgroundColor: theme.colors.primaryContainer},
-          ]}>
-          <Text
-            style={[theme.typography.labelLarge, {color: theme.colors.primary}]}>
-            {selectedUris.size} selected · {StorageService.formatBytes(totalSize)}
-          </Text>
-          <TouchableOpacity onPress={() => setSelectedUris(new Set())}>
-            <Text
-              style={[theme.typography.labelLarge, {color: theme.colors.primary}]}>
-              Clear
-            </Text>
-          </TouchableOpacity>
-        </Animated.View>
-      )}
+
 
       {/* Grid */}
       {isLoading ? (
@@ -396,6 +482,8 @@ export default function VideosScreen() {
               onPreview={() => setPreviewIndex(index)}
             />
           )}
+          onRefresh={refetch}
+          refreshing={isRefetching}
           showsVerticalScrollIndicator={false}
           initialNumToRender={10}
           maxToRenderPerBatch={10}
@@ -413,14 +501,14 @@ export default function VideosScreen() {
         />
       )}
 
-      {/* Floating dual-action selection bar */}
+      {/* Floating 3-action selection bar */}
       {selectedUris.size > 0 && (
         <Animated.View
           entering={FadeInDown.springify()}
           style={[
             styles.fabBarContainer,
             {
-              bottom: insets.bottom + 76,
+              bottom: 12,
               backgroundColor: theme.colors.surface,
               borderColor: theme.colors.border,
             },
@@ -444,7 +532,7 @@ export default function VideosScreen() {
                 mediaType: 'video',
               });
             }}>
-            <Icon name="file-replace-outline" size={18} color="white" />
+            <Icon name="swap-horizontal" size={18} color="white" />
             <Text style={[theme.typography.titleSmall, {color: 'white', fontWeight: '700'}]}>
               Convert ({selectedUris.size})
             </Text>
@@ -536,9 +624,40 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   tileTouchable: {flex: 1},
+  checkCircleTouchable: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    padding: 6,
+    zIndex: 10,
+  },
+  checkCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   tileThumb: {
     width: '100%',
     height: ITEM_HEIGHT,
+  },
+  formatBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    backgroundColor: 'rgba(15,23,42,0.85)',
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 5,
+    zIndex: 5,
+  },
+  formatText: {
+    color: '#38BDF8',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   playOverlay: {
     position: 'absolute',

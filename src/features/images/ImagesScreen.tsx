@@ -22,7 +22,7 @@ import Animated, {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {useInfiniteQuery, useQueryClient} from '@tanstack/react-query';
 import {CameraRoll, PhotoIdentifier} from '@react-native-camera-roll/camera-roll';
-import {request, PERMISSIONS, RESULTS} from 'react-native-permissions';
+import {PermissionService} from '../../shared/services/PermissionService';
 
 import {useTheme} from '../../app/theme/ThemeContext';
 import {RootStackParamList} from '../../app/navigation/types';
@@ -33,6 +33,7 @@ import SortFilterSheet from '../../shared/components/SortFilterSheet';
 import MediaPreviewModal, {
   MediaPreviewItem,
 } from '../../shared/components/MediaPreviewModal';
+import {useAlert} from '../../shared/components/AlertProvider';
 import {StorageService} from '../../shared/services/StorageService';
 import {
   SortOrder,
@@ -66,7 +67,7 @@ const ImageTile = React.memo(function ImageTile({
   const {theme} = useTheme();
   const scale = useSharedValue(1);
 
-  const handlePress = () => {
+  const handlePreviewPress = () => {
     scale.value = withSpring(0.95, {damping: 20, stiffness: 300}, () => {
       scale.value = withSpring(1);
     });
@@ -82,7 +83,7 @@ const ImageTile = React.memo(function ImageTile({
       entering={FadeIn.duration(180)}
       style={[styles.tile, animStyle]}>
       <TouchableOpacity
-        onPress={handlePress}
+        onPress={handlePreviewPress}
         onLongPress={() => onToggle(photo.node.image.uri)}
         delayLongPress={280}
         activeOpacity={0.9}
@@ -91,9 +92,6 @@ const ImageTile = React.memo(function ImageTile({
           source={{uri: photo.node.image.uri}}
           style={[styles.tileImage]}
           resizeMode="cover"
-          // Downsample to the tile size during decode. Without this, Fresco can
-          // decode full-res photos (a 12MP HEIC ≈ 48MB each) and scrolling the
-          // grid OOM-crashes the app on devices with large/HEIC photos.
           resizeMethod="resize"
         />
         {isSelected && (
@@ -104,24 +102,31 @@ const ImageTile = React.memo(function ImageTile({
             ]}
           />
         )}
+        <View style={styles.fileSizeLabel}>
+          <Text style={styles.fileSizeText}>
+            {StorageService.formatBytesShort(photo.node.image.fileSize ?? 0)}
+          </Text>
+        </View>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={() => onToggle(photo.node.image.uri)}
+        hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+        activeOpacity={0.8}
+        style={styles.checkCircleTouchable}>
         <View
           style={[
             styles.checkCircle,
             isSelected
               ? {backgroundColor: theme.colors.primary, borderColor: 'white'}
               : {
-                  backgroundColor: 'rgba(0,0,0,0.3)',
-                  borderColor: 'rgba(255,255,255,0.8)',
+                  backgroundColor: 'rgba(0,0,0,0.35)',
+                  borderColor: 'rgba(255,255,255,0.85)',
                 },
           ]}>
           {isSelected && (
             <Icon name="check" size={12} color="white" />
           )}
-        </View>
-        <View style={styles.fileSizeLabel}>
-          <Text style={styles.fileSizeText}>
-            {StorageService.formatBytesShort(photo.node.image.fileSize ?? 0)}
-          </Text>
         </View>
       </TouchableOpacity>
     </Animated.View>
@@ -133,6 +138,7 @@ export default function ImagesScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Nav>();
   const queryClient = useQueryClient();
+  const alert = useAlert();
 
   const [selectedUris, setSelectedUris] = useState<Set<string>>(new Set());
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
@@ -145,18 +151,19 @@ export default function ImagesScreen() {
   const {
     data,
     isLoading,
-    refetch,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    refetch,
+    isRefetching,
   } = useInfiniteQuery({
     queryKey: ['images'],
     initialPageParam: undefined as string | undefined,
     queryFn: async ({pageParam}) => {
       // Only prompt on the first page; later pages assume permission is held.
       if (!pageParam) {
-        const perm = await request(PERMISSIONS.ANDROID.READ_MEDIA_IMAGES);
-        if (perm !== RESULTS.GRANTED) {
+        const granted = await PermissionService.ensureImagePermission();
+        if (!granted) {
           throw new Error('Permission denied');
         }
       }
@@ -208,6 +215,39 @@ export default function ImagesScreen() {
     if (selectedUris.size === 0) {return;}
     navigation.navigate('ImageCompression', {
       selectedUris: Array.from(selectedUris),
+    });
+  };
+
+  const handleDelete = () => {
+    if (selectedUris.size === 0) return;
+    const count = selectedUris.size;
+    const uris = Array.from(selectedUris);
+
+    alert({
+      title: `Delete ${count} ${count > 1 ? 'Images' : 'Image'}?`,
+      message: 'Selected file(s) will be permanently removed from your device gallery.',
+      type: 'warning',
+      icon: 'trash-can-outline',
+      buttons: [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await CameraRoll.deletePhotos(uris);
+              setSelectedUris(new Set());
+              queryClient.invalidateQueries({queryKey: ['images']});
+            } catch (err) {
+              alert({
+                title: 'Delete Failed',
+                message: 'Could not delete selected files.',
+                type: 'error',
+              });
+            }
+          },
+        },
+      ],
     });
   };
 
@@ -278,24 +318,65 @@ export default function ImagesScreen() {
           </View>
         ) : (
           <View style={styles.headerTop}>
-            <View>
+            <View style={{flex: 1, marginRight: 8}}>
               <Text
-                style={[theme.typography.titleLarge, {color: theme.colors.text}]}>
+                style={[theme.typography.titleLarge, {color: theme.colors.text}]}
+                numberOfLines={1}>
                 Images
               </Text>
-              {photos.length > 0 && (
+              {selectedUris.size > 0 ? (
+                <TouchableOpacity
+                  style={{flexDirection: 'row', alignItems: 'center', gap: 4}}
+                  onPress={() => setSelectedUris(new Set())}>
+                  <Text
+                    style={[
+                      theme.typography.bodySmall,
+                      {color: theme.colors.primary, fontWeight: '700'},
+                    ]}>
+                    {selectedCount} selected · Clear
+                  </Text>
+                  <Icon name="close" size={14} color={theme.colors.primary} />
+                </TouchableOpacity>
+              ) : photos.length > 0 ? (
                 <Text
                   style={[
                     theme.typography.bodySmall,
                     {color: theme.colors.textSecondary},
-                  ]}>
+                  ]}
+                  numberOfLines={1}>
                   {filterActive || searchQuery
                     ? `${sortedPhotos.length} of ${photos.length} photos`
                     : `${photos.length}${hasNextPage ? '+' : ''} photos`}
                 </Text>
-              )}
+              ) : null}
             </View>
             <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={[styles.iconBtn, {backgroundColor: theme.colors.surfaceVariant}]}
+                onPress={() => refetch()}>
+                <Icon name="refresh" size={20} color={theme.colors.text} />
+              </TouchableOpacity>
+              {selectedUris.size > 0 && (
+                <TouchableOpacity
+                  style={[
+                    styles.iconBtn,
+                    {backgroundColor: theme.colors.errorContainer},
+                  ]}
+                  onPress={handleDelete}>
+                  <Icon
+                    name="trash-can-outline"
+                    size={20}
+                    color={theme.colors.error}
+                  />
+                </TouchableOpacity>
+              )}
+              {selectedUris.size > 0 && (
+                <TouchableOpacity
+                  style={[styles.iconBtn, {backgroundColor: theme.colors.primaryContainer}]}
+                  onPress={() => setSelectedUris(new Set())}>
+                  <Icon name="close-circle-outline" size={20} color={theme.colors.primary} />
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={[styles.iconBtn, {backgroundColor: theme.colors.surfaceVariant}]}
                 onPress={() => setShowSearch(true)}>
@@ -331,32 +412,7 @@ export default function ImagesScreen() {
         )}
       </View>
 
-      {/* Selection bar */}
-      {selectedCount > 0 && (
-        <Animated.View
-          entering={FadeInDown.springify()}
-          style={[
-            styles.selectionBar,
-            {backgroundColor: theme.colors.primaryContainer},
-          ]}>
-          <Text
-            style={[
-              theme.typography.labelLarge,
-              {color: theme.colors.primary},
-            ]}>
-            {selectedCount} selected
-          </Text>
-          <TouchableOpacity onPress={() => setSelectedUris(new Set())}>
-            <Text
-              style={[
-                theme.typography.labelLarge,
-                {color: theme.colors.primary},
-              ]}>
-              Deselect all
-            </Text>
-          </TouchableOpacity>
-        </Animated.View>
-      )}
+
 
       {/* Grid */}
       {isLoading ? (
@@ -388,6 +444,8 @@ export default function ImagesScreen() {
               onPreview={() => setPreviewIndex(index)}
             />
           )}
+          onRefresh={refetch}
+          refreshing={isRefetching}
           showsVerticalScrollIndicator={false}
           // ---- performance ----
           getItemLayout={(_, index) => ({
@@ -412,14 +470,14 @@ export default function ImagesScreen() {
         />
       )}
 
-      {/* Floating dual-action selection bar */}
+      {/* Floating 3-action selection bar */}
       {selectedCount > 0 && (
         <Animated.View
           entering={FadeInDown.springify()}
           style={[
             styles.fabBarContainer,
             {
-              bottom: insets.bottom + 76,
+              bottom: 12,
               backgroundColor: theme.colors.surface,
               borderColor: theme.colors.border,
             },
@@ -443,7 +501,7 @@ export default function ImagesScreen() {
                 mediaType: 'image',
               });
             }}>
-            <Icon name="file-replace-outline" size={18} color="white" />
+            <Icon name="swap-horizontal" size={18} color="white" />
             <Text style={[theme.typography.titleSmall, {color: 'white', fontWeight: '700'}]}>
               Convert ({selectedCount})
             </Text>
@@ -576,10 +634,14 @@ const styles = StyleSheet.create({
   selectedOverlay: {
     ...StyleSheet.absoluteFillObject,
   },
-  checkCircle: {
+  checkCircleTouchable: {
     position: 'absolute',
-    top: 6,
-    right: 6,
+    top: 2,
+    right: 2,
+    padding: 6,
+    zIndex: 10,
+  },
+  checkCircle: {
     width: 22,
     height: 22,
     borderRadius: 11,

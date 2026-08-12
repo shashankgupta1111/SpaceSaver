@@ -154,14 +154,18 @@ class DuplicateServiceClass {
       assetType: 'Photos',
       include: ['fileSize', 'filename', 'imageSize'],
     });
-    return res.edges.map(e => ({
-      uri: e.node.image.uri,
-      filename: e.node.image.filename ?? '',
-      fileSize: e.node.image.fileSize ?? 0,
-      width: e.node.image.width ?? 0,
-      height: e.node.image.height ?? 0,
-      timestamp: e.node.timestamp ?? 0,
-    }));
+    return res.edges.map(e => {
+      const uri = e.node.image.uri;
+      const uriFilename = uri ? uri.split('/').pop()?.split('?')[0] : '';
+      return {
+        uri,
+        filename: e.node.image.filename || uriFilename || 'Photo',
+        fileSize: e.node.image.fileSize ?? 0,
+        width: e.node.image.width ?? 0,
+        height: e.node.image.height ?? 0,
+        timestamp: e.node.timestamp ?? 0,
+      };
+    });
   }
 
   /**

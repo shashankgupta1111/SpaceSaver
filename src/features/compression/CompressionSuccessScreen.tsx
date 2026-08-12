@@ -123,6 +123,7 @@ export default function CompressionSuccessScreen() {
   const route = useRoute<Route>();
   const alert = useAlert();
   const {results, type} = route.params;
+  const isConvertMode = (route.params as any).mode === 'convert' || results.every(r => Math.abs(r.savedBytes) < 500000);
 
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -183,11 +184,11 @@ export default function CompressionSuccessScreen() {
       const noun = `file${count > 1 ? 's' : ''}`;
       let message: string;
       if (option === 'new') {
-        message = `${count} compressed ${noun} saved to your gallery (SpaceSaver album).`;
+        message = `${count} ${isConvertMode ? 'converted' : 'compressed'} ${noun} saved to your gallery.`;
       } else if (deletedCount > 0) {
         message = `${count} ${noun} saved and ${deletedCount} original ${deletedCount > 1 ? 'files' : 'file'} removed.`;
       } else {
-        message = `${count} compressed ${noun} saved to your gallery. Originals were kept.`;
+        message = `${count} ${isConvertMode ? 'converted' : 'compressed'} ${noun} saved to your gallery. Originals were kept.`;
       }
 
       alert({
@@ -257,7 +258,7 @@ export default function CompressionSuccessScreen() {
                 marginBottom: 8,
               },
             ]}>
-            Compression Complete!
+            {isConvertMode ? 'Format Conversion Complete!' : 'Compression Complete!'}
           </Text>
           <Text
             style={[
@@ -268,7 +269,7 @@ export default function CompressionSuccessScreen() {
                 marginBottom: 32,
               },
             ]}>
-            {results.length} file{results.length > 1 ? 's' : ''} compressed successfully
+            {results.length} file{results.length > 1 ? 's' : ''} {isConvertMode ? 'converted' : 'compressed'} successfully
           </Text>
         </Animated.View>
 
@@ -298,7 +299,7 @@ export default function CompressionSuccessScreen() {
               <View style={styles.statsItem}>
                 <Text
                   style={[theme.typography.labelMedium, {color: 'rgba(255,255,255,0.7)'}]}>
-                  Compressed
+                  {isConvertMode ? 'Converted' : 'Compressed'}
                 </Text>
                 <Text
                   style={[theme.typography.numericMedium, {color: 'white'}]}>
@@ -311,16 +312,16 @@ export default function CompressionSuccessScreen() {
 
             <View style={styles.savedRow}>
               <View style={styles.savedItem}>
-                <Icon name="leaf" size={20} color="#4ADE80" />
+                <Icon name={isConvertMode ? 'swap-horizontal' : 'leaf'} size={20} color="#4ADE80" />
                 <Text style={[theme.typography.labelMedium, {color: 'rgba(255,255,255,0.8)'}]}>
-                  Space Saved
+                  {isConvertMode ? 'Quality Preserved' : 'Space Saved'}
                 </Text>
                 <Text
                   style={[
                     theme.typography.numericLarge,
                     {color: '#4ADE80', fontWeight: '800'},
                   ]}>
-                  {StorageService.formatBytes(totalSaved)}
+                  {isConvertMode ? '100% Lossless' : StorageService.formatBytes(totalSaved)}
                 </Text>
               </View>
               <View
@@ -330,17 +331,17 @@ export default function CompressionSuccessScreen() {
                 ]}>
                 <Text
                   style={[
-                    theme.typography.displaySmall,
-                    {color: 'white', fontWeight: '900'},
+                    isConvertMode ? theme.typography.titleMedium : theme.typography.displaySmall,
+                    {color: 'white', fontWeight: '800', textAlign: 'center'},
                   ]}>
-                  {avgPercent}%
+                  {isConvertMode ? 'Converted' : `${avgPercent}%`}
                 </Text>
                 <Text
                   style={[
-                    theme.typography.bodyMedium,
-                    {color: 'rgba(255,255,255,0.7)'},
+                    theme.typography.bodySmall,
+                    {color: 'rgba(255,255,255,0.7)', textAlign: 'center'},
                   ]}>
-                  smaller
+                  {isConvertMode ? 'New Format' : 'smaller'}
                 </Text>
               </View>
             </View>
@@ -348,7 +349,7 @@ export default function CompressionSuccessScreen() {
         </Animated.View>
 
         {/* Per-file results */}
-        {results.length > 1 && (
+        {results.length > 0 && (
           <Animated.View entering={FadeInDown.delay(700).springify()}>
             <Text
               style={[
@@ -396,7 +397,7 @@ export default function CompressionSuccessScreen() {
                         theme.typography.labelSmall,
                         {color: theme.colors.success, fontWeight: '700'},
                       ]}>
-                      -{result.savedPercent}%
+                      {isConvertMode ? 'Converted' : `-${result.savedPercent}%`}
                     </Text>
                   </View>
                 </View>
@@ -469,7 +470,9 @@ export default function CompressionSuccessScreen() {
                 theme.typography.bodyMedium,
                 {color: theme.colors.textSecondary, marginBottom: 24},
               ]}>
-              What would you like to do with the compressed files?
+              {isConvertMode
+                ? 'What would you like to do with the converted files?'
+                : 'What would you like to do with the compressed files?'}
             </Text>
 
             <TouchableOpacity
@@ -498,7 +501,9 @@ export default function CompressionSuccessScreen() {
                     theme.typography.bodySmall,
                     {color: theme.colors.textSecondary},
                   ]}>
-                  Keep original and save compressed version
+                  {isConvertMode
+                    ? 'Keep original and save converted version'
+                    : 'Keep original and save compressed version'}
                 </Text>
               </View>
             </TouchableOpacity>

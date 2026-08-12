@@ -1,4 +1,8 @@
-import {Image as ImageCompressor, Video as VideoCompressor} from 'react-native-compressor';
+import {
+  Image as ImageCompressor,
+  Video as VideoCompressor,
+  getVideoMetaData,
+} from 'react-native-compressor';
 import RNFS from 'react-native-fs';
 import {CameraRoll} from '@react-native-camera-roll/camera-roll';
 import {CompressionOptions, CompressionResult} from '../../app/navigation/types';
@@ -16,7 +20,11 @@ class CompressionServiceClass {
     cancelToken?: CancelToken,
   ): Promise<CompressionResult> {
     const originalSize = await StorageService.getFileSize(uri);
-    const fileName = uri.split('/').pop() ?? 'image';
+    let rawName = uri.split('/').pop()?.split('?')[0] ?? 'image';
+    const targetExt = options.outputFormat ?? 'jpg';
+    const fileName = rawName.includes('.')
+      ? (options.mode === 'convert' ? `${rawName.substring(0, rawName.lastIndexOf('.'))}.${targetExt}` : rawName)
+      : `${rawName}.${targetExt}`;
     const id = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
     const isConvertMode = options.mode === 'convert';
@@ -72,7 +80,11 @@ class CompressionServiceClass {
     cancelToken?: CancelToken,
   ): Promise<CompressionResult> {
     const originalSize = await StorageService.getFileSize(uri);
-    const fileName = uri.split('/').pop() ?? 'video';
+    let rawName = uri.split('/').pop()?.split('?')[0] ?? 'video';
+    const targetExt = options.videoOutputFormat ?? 'mp4';
+    const fileName = rawName.includes('.')
+      ? (options.mode === 'convert' ? `${rawName.substring(0, rawName.lastIndexOf('.'))}.${targetExt}` : rawName)
+      : `${rawName}.${targetExt}`;
     const id = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
     if (cancelToken?.cancelled) {
@@ -81,43 +93,73 @@ class CompressionServiceClass {
 
     const isConvertMode = options.mode === 'convert';
 
-    const resolutionMap: Record<string, number> = {
-      '1080p': 1080,
-      '720p': 720,
-      '480p': 480,
-      '360p': 360,
-      original: 0,
-    };
-
-    const bitrateMap: Record<string, number | undefined> = {
-      low: 500000,
-      medium: 1500000,
-      high: 4000000,
-      auto: undefined,
-    };
-
-    const resolution = isConvertMode ? 'original' : (options.resolution ?? '720p');
-    const maxSize = resolutionMap[resolution] ?? 720;
-    const bitrate = isConvertMode
-      ? 4000000
-      : bitrateMap[options.videoBitrate ?? 'auto'];
-
-    const compressedUri = await VideoCompressor.compress(
-      uri,
-      {
-        compressionMethod: 'auto',
-        maxSize: maxSize > 0 ? maxSize : undefined,
-        bitrate,
-        minimumFileSizeForCompress: 0,
-        progressDivider: 5,
-      },
-      progress => {
-        onProgress?.(progress);
-        if (cancelToken?.cancelled) {
-          throw new Error('CANCELLED');
+    let compressedUri: string;
+    if (isConvertMode) {
+      // In format conversion mode, preserve 100% original bitrate and unscaled resolution
+      let originalBitrate = 50000000; // high default fallback (50 Mbps)
+      try {
+        const meta = await getVideoMetaData(uri);
+        if (meta?.size && meta?.duration && meta.duration > 0) {
+          // Bitrate in bps = (fileSize in bytes * 8) / duration in seconds
+          originalBitrate = Math.max(1000000, Math.round((meta.size * 8) / meta.duration));
         }
-      },
-    );
+      } catch {
+        // Fallback to 50Mbps if metadata extraction fails
+      }
+
+      compressedUri = await VideoCompressor.compress(
+        uri,
+        {
+          compressionMethod: 'manual',
+          maxSize: 99999,
+          bitrate: originalBitrate,
+          minimumFileSizeForCompress: 0,
+          progressDivider: 5,
+        },
+        progress => {
+          onProgress?.(progress);
+          if (cancelToken?.cancelled) {
+            throw new Error('CANCELLED');
+          }
+        },
+      );
+    } else {
+      const resolutionMap: Record<string, number> = {
+        '1080p': 1080,
+        '720p': 720,
+        '480p': 480,
+        '360p': 360,
+        original: 0,
+      };
+
+      const bitrateMap: Record<string, number | undefined> = {
+        low: 500000,
+        medium: 1500000,
+        high: 4000000,
+        auto: undefined,
+      };
+
+      const resolution = options.resolution ?? '720p';
+      const maxSize = resolutionMap[resolution] ?? 720;
+      const bitrate = bitrateMap[options.videoBitrate ?? 'auto'];
+
+      compressedUri = await VideoCompressor.compress(
+        uri,
+        {
+          compressionMethod: 'auto',
+          maxSize: maxSize > 0 ? maxSize : undefined,
+          bitrate,
+          minimumFileSizeForCompress: 0,
+          progressDivider: 5,
+        },
+        progress => {
+          onProgress?.(progress);
+          if (cancelToken?.cancelled) {
+            throw new Error('CANCELLED');
+          }
+        },
+      );
+    }
 
     const compressedSize = await StorageService.getFileSize(compressedUri);
     const savedBytes = Math.max(0, originalSize - compressedSize);
@@ -197,7 +239,7 @@ class CompressionServiceClass {
         }
         return Math.round(originalSize * 0.95);
       } else {
-        return Math.round(originalSize * 0.95);
+        return originalSize;
       }
     }
 

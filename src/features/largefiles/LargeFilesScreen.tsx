@@ -23,6 +23,7 @@ import HeaderBar from '../../shared/components/HeaderBar';
 import AnimatedButton from '../../shared/components/AnimatedButton';
 import EmptyState from '../../shared/components/EmptyState';
 import Loader from '../../shared/components/Loader';
+import {VideoThumbnail} from '../../shared/components/VideoThumbnail';
 import MediaPreviewModal, {
   MediaPreviewItem,
 } from '../../shared/components/MediaPreviewModal';
@@ -353,12 +354,20 @@ function LargeRow({
           },
         ]}>
         <View>
-          <Image
-            source={{uri: file.uri}}
-            style={styles.thumb}
-            resizeMode="cover"
-            resizeMethod="resize"
-          />
+          {file.type === 'video' ? (
+            <VideoThumbnail
+              videoUri={file.uri}
+              style={styles.thumb}
+              resizeMode="cover"
+            />
+          ) : (
+            <Image
+              source={{uri: file.uri}}
+              style={styles.thumb}
+              resizeMode="cover"
+              resizeMethod="resize"
+            />
+          )}
           {file.type === 'video' && (
             <View style={styles.playPill}>
               <Icon name="play" size={11} color="white" />

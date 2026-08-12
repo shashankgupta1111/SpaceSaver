@@ -21,6 +21,7 @@ import EmptyState from '../../shared/components/EmptyState';
 import HeaderBar from '../../shared/components/HeaderBar';
 import {useAlert} from '../../shared/components/AlertProvider';
 import Card from '../../shared/components/Card';
+import {VideoThumbnail} from '../../shared/components/VideoThumbnail';
 import {format} from 'date-fns';
 
 type FilterType = 'all' | 'images' | 'videos';
@@ -52,18 +53,11 @@ function HistoryCard({
                 resizeMode="cover"
               />
             ) : (
-              <View
-                style={[
-                  styles.thumb,
-                  styles.videoThumb,
-                  {backgroundColor: theme.colors.surfaceVariant},
-                ]}>
-                <Icon
-                  name="video-play"
-                  size={24}
-                  color={theme.colors.textTertiary}
-                />
-              </View>
+              <VideoThumbnail
+                videoUri={item.compressedUri || item.originalUri}
+                style={styles.thumb}
+                resizeMode="cover"
+              />
             )}
             <View
               style={[

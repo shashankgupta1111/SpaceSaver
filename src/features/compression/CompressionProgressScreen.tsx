@@ -438,8 +438,9 @@ export default function CompressionProgressScreen() {
                       theme.typography.bodySmall,
                       {color: theme.colors.success},
                     ]}>
-                    Saved {file.result.savedPercent}% ·{' '}
-                    {StorageService.formatBytes(file.result.savedBytes)}
+                    {options.mode === 'convert'
+                      ? 'Format Converted · Lossless'
+                      : `Saved ${file.result.savedPercent}% · ${StorageService.formatBytes(file.result.savedBytes)}`}
                   </Text>
                 )}
                 {file.status === 'failed' && (

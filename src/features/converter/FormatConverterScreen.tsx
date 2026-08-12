@@ -18,6 +18,7 @@ import {useTheme} from '../../app/theme/ThemeContext';
 import {RootStackParamList, CompressionOptions} from '../../app/navigation/types';
 import Card from '../../shared/components/Card';
 import AnimatedButton from '../../shared/components/AnimatedButton';
+import {VideoThumbnail} from '../../shared/components/VideoThumbnail';
 import {CameraRoll, PhotoIdentifier} from '@react-native-camera-roll/camera-roll';
 import {MediaService, LargeFile} from '../../shared/services/MediaService';
 import {StorageService} from '../../shared/services/StorageService';
@@ -257,7 +258,11 @@ export default function FormatConverterScreen() {
               style={{marginTop: 12}}
               renderItem={({item}) => (
                 <View style={styles.thumbWrapper}>
-                  <Image source={{uri: item.uri}} style={styles.thumbImage} resizeMode="cover" />
+                  {item.type === 'image' ? (
+                    <Image source={{uri: item.uri}} style={styles.thumbImage} resizeMode="cover" />
+                  ) : (
+                    <VideoThumbnail videoUri={item.uri} style={styles.thumbImage} resizeMode="cover" />
+                  )}
                 </View>
               )}
             />

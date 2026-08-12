@@ -34,6 +34,7 @@ import Card from '../../shared/components/Card';
 import StoragePieChart from '../../shared/components/StoragePieChart';
 import AnimatedButton from '../../shared/components/AnimatedButton';
 import {MilestoneModal} from '../../shared/components/MilestoneModal';
+import {VideoThumbnail} from '../../shared/components/VideoThumbnail';
 
 const {width: SCREEN_WIDTH} = Dimensions.get('window');
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -470,12 +471,20 @@ export default function HomeScreen() {
                       borderBottomColor: theme.colors.borderLight,
                     },
                   ]}>
-                  <Image
-                    source={{uri: file.uri}}
-                    style={styles.largeThumb}
-                    resizeMode="cover"
-                    resizeMethod="resize"
-                  />
+                  {file.type === 'image' ? (
+                    <Image
+                      source={{uri: file.uri}}
+                      style={styles.largeThumb}
+                      resizeMode="cover"
+                      resizeMethod="resize"
+                    />
+                  ) : (
+                    <VideoThumbnail
+                      videoUri={file.uri}
+                      style={styles.largeThumb}
+                      resizeMode="cover"
+                    />
+                  )}
                   <View style={styles.largeInfo}>
                     <Text
                       style={[theme.typography.bodyMedium, {color: theme.colors.text}]}

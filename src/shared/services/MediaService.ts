@@ -1,5 +1,5 @@
 import {CameraRoll, PhotoIdentifier} from '@react-native-camera-roll/camera-roll';
-import {check, request, PERMISSIONS, RESULTS} from 'react-native-permissions';
+import {PermissionService} from './PermissionService';
 
 export interface LargeFile {
   uri: string;
@@ -33,10 +33,12 @@ class MediaServiceClass {
 
   private toFile(edge: PhotoIdentifier, type: 'image' | 'video'): LargeFile {
     const img = edge.node.image;
+    const uriFilename = img.uri ? img.uri.split('/').pop()?.split('?')[0] : null;
+    const filename = img.filename || uriFilename || (type === 'image' ? 'Photo' : 'Video');
     return {
       uri: img.uri,
       type,
-      filename: img.filename ?? (type === 'image' ? 'Photo' : 'Video'),
+      filename,
       fileSize: img.fileSize ?? 0,
       width: img.width ?? 0,
       height: img.height ?? 0,
@@ -47,16 +49,14 @@ class MediaServiceClass {
 
   /** True if we already hold image OR video read permission (no prompt). */
   async hasMediaPermission(): Promise<boolean> {
-    const img = await check(PERMISSIONS.ANDROID.READ_MEDIA_IMAGES);
-    const vid = await check(PERMISSIONS.ANDROID.READ_MEDIA_VIDEO);
-    return img === RESULTS.GRANTED || vid === RESULTS.GRANTED;
+    const hasImg = await PermissionService.hasImagePermission();
+    const hasVid = await PermissionService.hasVideoPermission();
+    return hasImg || hasVid;
   }
 
   /** Prompts for image + video read permission; resolves true if either granted. */
   async ensureMediaPermission(): Promise<boolean> {
-    const img = await request(PERMISSIONS.ANDROID.READ_MEDIA_IMAGES);
-    const vid = await request(PERMISSIONS.ANDROID.READ_MEDIA_VIDEO);
-    return img === RESULTS.GRANTED || vid === RESULTS.GRANTED;
+    return PermissionService.ensureMediaPermission();
   }
 
   /**
