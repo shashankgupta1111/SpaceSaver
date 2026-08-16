@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
@@ -42,7 +43,23 @@ class CompressionForegroundService : Service() {
             ACTION_START -> {
                 totalFiles = intent.getIntExtra(EXTRA_TOTAL_FILES, 1)
                 val notification = buildNotification(0, "Preparing...", 0, totalFiles)
-                startForeground(NOTIFICATION_ID, notification)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        startForeground(
+                            NOTIFICATION_ID,
+                            notification,
+                            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING
+                        )
+                    } else {
+                        startForeground(
+                            NOTIFICATION_ID,
+                            notification,
+                            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                        )
+                    }
+                } else {
+                    startForeground(NOTIFICATION_ID, notification)
+                }
             }
             ACTION_UPDATE -> {
                 currentProgress = intent.getIntExtra(EXTRA_PROGRESS, 0)
@@ -62,6 +79,11 @@ class CompressionForegroundService : Service() {
             }
         }
         return START_NOT_STICKY
+    }
+
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        super.onTimeout(startId, fgsType)
+        stopSelf()
     }
 
     override fun onBind(intent: Intent?): IBinder = binder

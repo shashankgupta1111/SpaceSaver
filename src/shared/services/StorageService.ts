@@ -1,4 +1,4 @@
-import {NativeModules, Platform} from 'react-native';
+import {Platform} from 'react-native';
 import RNFS from 'react-native-fs';
 import {MMKV} from 'react-native-mmkv';
 
@@ -31,7 +31,16 @@ export interface StorageForecast {
   samples: number;
 }
 
+export interface WhatChangedSummary {
+  hasPreviousData: boolean;
+  timeSpanText: string;
+  deviceUsedDelta: number; // positive = storage grew, negative = storage freed
+  appSavedDelta: number; // SpaceSaver tracked savings
+  lastCheckedDate: number;
+}
+
 const FREESPACE_SAMPLES_KEY = 'freespace_samples';
+const STORAGE_CHECKPOINT_KEY = 'storage_checkpoint_data';
 const MAX_SAMPLES = 30;
 
 class StorageServiceClass {
@@ -166,6 +175,73 @@ class StorageServiceClass {
     }
     const daysUntilFull = Math.max(0, Math.round(currentFree / -dailyChange));
     return {daysUntilFull, dailyChange, samples: count};
+  }
+
+  /**
+   * "What Changed?" summary: compares current storage usage with the previous recorded snapshot.
+   */
+  getWhatChangedSummary(currentUsed: number): WhatChangedSummary {
+    const raw = storage.getString(STORAGE_CHECKPOINT_KEY);
+    const totalAppSaved = storage.getNumber('totalSavedBytes') ?? 0;
+
+    if (!raw) {
+      // First time initialization
+      const initialSnapshot = {
+        timestamp: Date.now(),
+        usedBytes: currentUsed,
+        appSavedBytes: totalAppSaved,
+      };
+      storage.set(STORAGE_CHECKPOINT_KEY, JSON.stringify(initialSnapshot));
+
+      return {
+        hasPreviousData: false,
+        timeSpanText: 'First check initialized',
+        deviceUsedDelta: 0,
+        appSavedDelta: 0,
+        lastCheckedDate: Date.now(),
+      };
+    }
+
+    try {
+      const prev = JSON.parse(raw) as {
+        timestamp: number;
+        usedBytes: number;
+        appSavedBytes: number;
+      };
+
+      const now = Date.now();
+      const elapsedDays = Math.max(1, Math.round((now - prev.timestamp) / 86400000));
+      const timeSpanText = `Since your check ${elapsedDays} day${elapsedDays > 1 ? 's' : ''} ago`;
+
+      const deviceUsedDelta = currentUsed - prev.usedBytes;
+      const appSavedDelta = totalAppSaved - prev.appSavedBytes;
+
+      return {
+        hasPreviousData: true,
+        timeSpanText,
+        deviceUsedDelta,
+        appSavedDelta,
+        lastCheckedDate: prev.timestamp,
+      };
+    } catch {
+      return {
+        hasPreviousData: false,
+        timeSpanText: 'Tracking initialized',
+        deviceUsedDelta: 0,
+        appSavedDelta: 0,
+        lastCheckedDate: Date.now(),
+      };
+    }
+  }
+
+  saveStorageCheckpoint(usedBytes: number): void {
+    const totalAppSaved = storage.getNumber('totalSavedBytes') ?? 0;
+    const snapshot = {
+      timestamp: Date.now(),
+      usedBytes,
+      appSavedBytes: totalAppSaved,
+    };
+    storage.set(STORAGE_CHECKPOINT_KEY, JSON.stringify(snapshot));
   }
 
   private updateWeeklyStats(bytes: number): void {

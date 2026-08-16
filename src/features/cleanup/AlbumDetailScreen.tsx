@@ -89,38 +89,29 @@ export default function AlbumDetailScreen() {
   const handleDelete = () => {
     const uris = Array.from(selected);
     if (uris.length === 0) {return;}
-    alert({
+
+    setDeleting(true);
+    MediaService.requestDeleteWithConsent(uris, {
       title: `Delete ${uris.length} item${uris.length > 1 ? 's' : ''}?`,
       message: `Frees ${StorageService.formatBytes(
         selectedBytes,
       )}. Android will ask you to confirm removal.`,
-      type: 'warning',
-      icon: 'trash-can-outline',
-      buttons: [
-        {text: 'Cancel', style: 'cancel'},
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setDeleting(true);
-            try {
-              await DuplicateService.deletePhotos(uris);
-              setSelected(new Set());
-              queryClient.invalidateQueries({queryKey: ['albumMedia', albumTitle]});
-              queryClient.invalidateQueries({queryKey: ['albums']});
-              queryClient.invalidateQueries({queryKey: ['largestMedia', 20]});
-            } catch {
-              alert({
-                title: 'Delete failed',
-                message: 'Some items could not be removed.',
-                type: 'error',
-              });
-            } finally {
-              setDeleting(false);
-            }
-          },
-        },
-      ],
+      alert,
+      onSuccess: () => {
+        setSelected(new Set());
+        setDeleting(false);
+        queryClient.invalidateQueries({queryKey: ['albumMedia', albumTitle]});
+        queryClient.invalidateQueries({queryKey: ['albums']});
+        queryClient.invalidateQueries({queryKey: ['largestMedia', 20]});
+      },
+      onError: () => {
+        setDeleting(false);
+        alert({
+          title: 'Delete Cancelled',
+          message: 'Some items could not be removed.',
+          type: 'info',
+        });
+      },
     });
   };
 

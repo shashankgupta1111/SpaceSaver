@@ -43,13 +43,18 @@ export interface DupPhoto {
 }
 
 export type DuplicateKind = 'exact' | 'similar';
+export type DuplicateConfidence = 'high' | 'medium' | 'low';
 
 export interface DuplicateGroup {
   id: string;
   kind: DuplicateKind;
+  confidence: DuplicateConfidence;
+  confidenceLabel: string;
   /** Photos in the group, sorted best-first (recommended keeper at index 0). */
   photos: DupPhoto[];
   keeperUri: string;
+  keeperReason: string;
+  otherCopiesSummary: string;
   /** Bytes reclaimable if every photo except the keeper is deleted. */
   reclaimable: number;
 }
@@ -255,14 +260,20 @@ class DuplicateServiceClass {
         return;
       }
       const members = idxs.map(i => hashed[i]);
-      // "Exact" only when every member shares an identical hash with the first;
-      // any non-zero distance within the cluster makes it "similar".
-      const first = hashes.get(members[0].uri)!;
-      const exact = members.every(m => {
+      const firstHash = hashes.get(members[0].uri)!;
+      const maxDist = members.reduce((max, m) => {
         const h = hashes.get(m.uri)!;
-        return hamming(first.a, h.a) + hamming(first.d, h.d) === 0;
-      });
-      groups.push(this.buildGroup(members, exact ? 'exact' : 'similar'));
+        const d = hamming(firstHash.a, h.a) + hamming(firstHash.d, h.d);
+        return Math.max(max, d);
+      }, 0);
+
+      const isExact = maxDist === 0;
+      const confidence: DuplicateConfidence =
+        isExact ? 'high' : maxDist <= 6 ? 'medium' : 'low';
+
+      groups.push(
+        this.buildGroup(members, isExact ? 'exact' : 'similar', confidence),
+      );
     });
 
     return this.finalize(groups, photos.length, true);
@@ -301,7 +312,11 @@ class DuplicateServiceClass {
 
   /* ---- Group building + keeper selection ---- */
 
-  private buildGroup(members: DupPhoto[], kind: DuplicateKind): DuplicateGroup {
+  private buildGroup(
+    members: DupPhoto[],
+    kind: DuplicateKind,
+    confidence: DuplicateConfidence = 'high',
+  ): DuplicateGroup {
     // Best keeper = highest resolution, then largest file, then newest.
     const sorted = [...members].sort((a, b) => {
       const resA = a.width * a.height;
@@ -314,17 +329,56 @@ class DuplicateServiceClass {
       }
       return b.timestamp - a.timestamp;
     });
+
     const keeper = sorted[0];
-    const reclaimable = sorted
-      .slice(1)
-      .reduce((sum, p) => sum + p.fileSize, 0);
+    const duplicates = sorted.slice(1);
+    const reclaimable = duplicates.reduce((sum, p) => sum + p.fileSize, 0);
+
+    const keeperMP =
+      keeper.width && keeper.height
+        ? `${((keeper.width * keeper.height) / 1_000_000).toFixed(1)} MP`
+        : 'Photo';
+
+    const keeperReason = `Recommended to keep: ${keeperMP} (${keeper.width}×${keeper.height}) · ${this.formatBytes(
+      keeper.fileSize,
+    )} · Highest resolution`;
+
+    const otherCopiesSummary = duplicates
+      .map(d => {
+        const mp =
+          d.width && d.height
+            ? `${((d.width * d.height) / 1_000_000).toFixed(1)} MP`
+            : 'Photo';
+        return `${mp} · ${this.formatBytes(d.fileSize)}`;
+      })
+      .join(', ');
+
+    let confidenceLabel = 'Exact Duplicate';
+    if (confidence === 'medium') {
+      confidenceLabel = 'Very Similar Photo';
+    } else if (confidence === 'low') {
+      confidenceLabel = 'Potential Match';
+    }
+
     return {
       id: keeper.uri,
       kind,
+      confidence,
+      confidenceLabel,
       photos: sorted,
       keeperUri: keeper.uri,
+      keeperReason,
+      otherCopiesSummary,
       reclaimable,
     };
+  }
+
+  private formatBytes(bytes: number): string {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   }
 
   private finalize(

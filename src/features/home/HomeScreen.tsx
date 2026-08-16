@@ -19,6 +19,7 @@ import Animated, {
   withTiming,
   interpolate,
   useAnimatedScrollHandler,
+  FadeInDown,
 } from 'react-native-reanimated';
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -30,6 +31,9 @@ import {RootStackParamList} from '../../app/navigation/types';
 import {StorageService, StorageInfo} from '../../shared/services/StorageService';
 import {MediaService, LargeFile} from '../../shared/services/MediaService';
 import {HistoryService} from '../../shared/services/HistoryService';
+import {SmartCleanupService} from '../../shared/services/SmartCleanupService';
+import {SmartRecommendationService} from '../../shared/services/SmartRecommendationService';
+import {CompressionQueueService} from '../../shared/services/CompressionQueueService';
 import Card from '../../shared/components/Card';
 import StoragePieChart from '../../shared/components/StoragePieChart';
 import AnimatedButton from '../../shared/components/AnimatedButton';
@@ -99,6 +103,7 @@ export default function HomeScreen() {
   useEffect(() => {
     MediaService.hasMediaPermission().then(setMediaAllowed);
   }, []);
+
   const {data: largestFiles = []} = useQuery({
     queryKey: ['largestMedia', 20],
     queryFn: () => MediaService.getLargestMedia(20),
@@ -106,6 +111,25 @@ export default function HomeScreen() {
     staleTime: 60_000,
   });
   const largestPreview = largestFiles.slice(0, 4);
+
+  // Active queue count
+  const [queueCount, setQueueCount] = useState<number>(
+    () => CompressionQueueService.getJobs().filter(j => j.status === 'pending' || j.status === 'processing').length,
+  );
+
+  useEffect(() => {
+    return CompressionQueueService.subscribe(jobs => {
+      setQueueCount(jobs.filter(j => j.status === 'pending' || j.status === 'processing').length);
+    });
+  }, []);
+
+  // Smart Recommendations
+  const {data: recommendationsReport} = useQuery({
+    queryKey: ['smartRecommendationsReport'],
+    queryFn: () => SmartRecommendationService.generateRecommendations(false),
+    enabled: mediaAllowed,
+    staleTime: 60_000,
+  });
 
   // Celebrate savings milestones (1/5/10… GB) once each.
   const [milestone, setMilestone] = useState<number | null>(null);
@@ -123,12 +147,35 @@ export default function HomeScreen() {
     ? (storageInfo.savedByApp / storageInfo.totalStorage) * 100
     : 0;
 
+  const {data: cleanupSummary} = useQuery({
+    queryKey: ['smartCleanupSummary'],
+    queryFn: () => SmartCleanupService.getQuickSummary(),
+    enabled: mediaAllowed,
+    staleTime: 60_000,
+  });
+
+  const health =
+    cleanupSummary?.health ??
+    (storageInfo
+      ? SmartCleanupService.calculateHealthScore(
+          storageInfo.usedStorage,
+          storageInfo.totalStorage,
+          storageInfo.freeStorage,
+          0,
+        )
+      : null);
+  const potentialSavings = cleanupSummary?.totalPotentialSavingsBytes ?? 0;
+
   const barData = weeklyStats.map(s => ({
     value: s.saved / (1024 * 1024),
     label: s.day,
     frontColor: theme.colors.primary,
     gradientColor: theme.colors.secondary,
   }));
+
+  const hasSmartRecommendations =
+    (recommendationsReport?.totalEstimatedSavingsBytes ?? 0) > 15 * 1024 * 1024 &&
+    (recommendationsReport?.totalCount ?? 0) > 0;
 
   return (
     <View style={[styles.root, {backgroundColor: theme.colors.background}]}>
@@ -165,14 +212,35 @@ export default function HomeScreen() {
               Free up your storage
             </Text>
           </View>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('History')}
-            style={[
-              styles.historyBtn,
-              {backgroundColor: theme.colors.primaryContainer},
-            ]}>
-            <Icon name="history" size={20} color={theme.colors.primary} />
-          </TouchableOpacity>
+
+          <View style={styles.headerRightRow}>
+            {queueCount > 0 && (
+              <TouchableOpacity
+                onPress={() => navigation.navigate('CompressionQueue')}
+                style={[
+                  styles.queueBtn,
+                  {backgroundColor: theme.colors.primaryContainer},
+                ]}>
+                <Icon name="tray-full" size={18} color={theme.colors.primary} />
+                <Text
+                  style={[
+                    theme.typography.labelSmall,
+                    {color: theme.colors.primary, fontWeight: '800'},
+                  ]}>
+                  {queueCount}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              onPress={() => navigation.navigate('History')}
+              style={[
+                styles.historyBtn,
+                {backgroundColor: theme.colors.primaryContainer},
+              ]}>
+              <Icon name="history" size={20} color={theme.colors.primary} />
+            </TouchableOpacity>
+          </View>
         </Animated.View>
 
         {/* Main Storage Card */}
@@ -287,6 +355,122 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {/* Storage Health & Smart Cleanup Featured Card */}
+        <Animated.View entering={FadeInDown.delay(50).springify()}>
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={() => navigation.navigate('SmartCleanup')}>
+            <Card style={styles.smartCleanupCard} padding={16}>
+              <View style={styles.smartCleanupRow}>
+                <View
+                  style={[
+                    styles.healthCircleBadge,
+                    {
+                      backgroundColor: `${health?.color ?? theme.colors.primary}18`,
+                      borderColor: health?.color ?? theme.colors.primary,
+                    },
+                  ]}>
+                  <Text
+                    style={[
+                      styles.healthScoreSmall,
+                      {color: health?.color ?? theme.colors.primary},
+                    ]}>
+                    {health?.score ?? 85}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.healthScoreLabel,
+                      {color: health?.color ?? theme.colors.primary},
+                    ]}>
+                    HEALTH
+                  </Text>
+                </View>
+
+                <View style={styles.smartCleanupTextContainer}>
+                  <View style={styles.healthStatusRow}>
+                    <Text
+                      style={[
+                        theme.typography.titleSmall,
+                        {color: theme.colors.text, fontWeight: '700'},
+                      ]}>
+                      Storage Health · {health?.status ?? 'Healthy'}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      theme.typography.bodySmall,
+                      {color: theme.colors.textSecondary, marginTop: 2},
+                    ]}>
+                    {potentialSavings > 0
+                      ? `You could free up ~${StorageService.formatBytes(potentialSavings)}`
+                      : 'Storage optimized & clean'}
+                  </Text>
+                </View>
+
+                <View
+                  style={[
+                    styles.smartCleanupActionBtn,
+                    {backgroundColor: theme.colors.primary},
+                  ]}>
+                  <Icon name="broom" size={16} color="#FFFFFF" />
+                  <Text
+                    style={[
+                      theme.typography.labelSmall,
+                      {color: '#FFFFFF', fontWeight: '700'},
+                    ]}>
+                    Clean
+                  </Text>
+                </View>
+              </View>
+            </Card>
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* Phase 2: Compact Smart Recommendation Section on Home */}
+        {hasSmartRecommendations && (
+          <Animated.View entering={FadeInDown.delay(80).springify()}>
+            <TouchableOpacity
+              activeOpacity={0.88}
+              onPress={() => navigation.navigate('SmartRecommendations')}>
+              <Card style={styles.compactRecCard} padding={16}>
+                <View style={styles.compactRecRow}>
+                  <View style={[styles.compactRecIconBox, {backgroundColor: theme.colors.primaryContainer}]}>
+                    <Icon name="creation" size={24} color={theme.colors.primary} />
+                  </View>
+
+                  <View style={styles.compactRecContent}>
+                    <View style={styles.compactRecTitleRow}>
+                      <Text style={[theme.typography.labelSmall, {color: theme.colors.textSecondary, fontWeight: '700'}]}>
+                        SMART RECOMMENDATION
+                      </Text>
+                      <View style={[styles.compactRecSavingsPill, {backgroundColor: theme.colors.successContainer}]}>
+                        <Text style={[theme.typography.labelSmall, {color: theme.colors.success, fontWeight: '800'}]}>
+                          ~{StorageService.formatBytes(recommendationsReport?.totalEstimatedSavingsBytes ?? 0)}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={[theme.typography.titleSmall, {color: theme.colors.text, fontWeight: '700', marginTop: 2}]}>
+                      You could save ~{StorageService.formatBytes(recommendationsReport?.totalEstimatedSavingsBytes ?? 0)}
+                    </Text>
+
+                    <Text style={[theme.typography.bodySmall, {color: theme.colors.textSecondary, marginTop: 2}]}>
+                      {recommendationsReport?.videoCount ?? 0} large videos and {recommendationsReport?.photoCount ?? 0} photos could be compressed.
+                    </Text>
+                  </View>
+
+                  <View style={[styles.compactRecReviewBtn, {backgroundColor: theme.colors.primary}]}>
+                    <Text style={[theme.typography.labelSmall, {color: '#FFFFFF', fontWeight: '700'}]}>
+                      Review
+                    </Text>
+                    <Icon name="chevron-right" size={14} color="#FFFFFF" />
+                  </View>
+                </View>
+              </Card>
+            </TouchableOpacity>
+          </Animated.View>
+        )}
+
         {/* Tools & Functions Grid */}
         <Text
           style={[
@@ -391,7 +575,63 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Cleanup tools */}
+        {/* Phase 2 Cleanup Workflows */}
+        <Text
+          style={[
+            theme.typography.titleMedium,
+            styles.sectionTitle,
+            {color: theme.colors.text, fontWeight: '700'},
+          ]}>
+          Smart Cleanup Workflows
+        </Text>
+
+        {/* Screenshot Manager */}
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => navigation.navigate('ScreenshotManager')}
+          style={styles.dupCard}>
+          <View
+            style={[
+              styles.dupIcon,
+              {backgroundColor: `${theme.colors.warning}18`},
+            ]}>
+            <Icon name="cellphone-screenshot" size={24} color={theme.colors.warning} />
+          </View>
+          <View style={styles.dupInfo}>
+            <Text style={[theme.typography.titleSmall, {color: theme.colors.text}]}>
+              Screenshot Manager
+            </Text>
+            <Text style={[theme.typography.bodySmall, {color: theme.colors.textSecondary}]}>
+              Group & clean up old screenshots by date periods
+            </Text>
+          </View>
+          <Icon name="chevron-right" size={22} color={theme.colors.textTertiary} />
+        </TouchableOpacity>
+
+        {/* Older Media Finder */}
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => navigation.navigate('OldMedia')}
+          style={styles.dupCard}>
+          <View
+            style={[
+              styles.dupIcon,
+              {backgroundColor: `${theme.colors.secondary}18`},
+            ]}>
+            <Icon name="clock-outline" size={24} color={theme.colors.secondary} />
+          </View>
+          <View style={styles.dupInfo}>
+            <Text style={[theme.typography.titleSmall, {color: theme.colors.text}]}>
+              Old Media Finder
+            </Text>
+            <Text style={[theme.typography.bodySmall, {color: theme.colors.textSecondary}]}>
+              Filter files not modified recently (30d, 90d, 6m, 1y)
+            </Text>
+          </View>
+          <Icon name="chevron-right" size={22} color={theme.colors.textTertiary} />
+        </TouchableOpacity>
+
+        {/* Duplicates */}
         <TouchableOpacity
           activeOpacity={0.9}
           onPress={() => navigation.navigate('Duplicates')}
@@ -414,6 +654,52 @@ export default function HomeScreen() {
                 {color: theme.colors.textSecondary},
               ]}>
               Detect copies & similar shots, keep the best
+            </Text>
+          </View>
+          <Icon name="chevron-right" size={22} color={theme.colors.textTertiary} />
+        </TouchableOpacity>
+
+        {/* Similar & Duplicate Videos */}
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => navigation.navigate('VideoDuplicates')}
+          style={styles.dupCard}>
+          <View
+            style={[
+              styles.dupIcon,
+              {backgroundColor: 'rgba(239, 68, 68, 0.15)'},
+            ]}>
+            <Icon name="video-vintage" size={24} color="#EF4444" />
+          </View>
+          <View style={styles.dupInfo}>
+            <Text style={[theme.typography.titleSmall, {color: theme.colors.text}]}>
+              Similar & Duplicate Videos
+            </Text>
+            <Text style={[theme.typography.bodySmall, {color: theme.colors.textSecondary}]}>
+              Detect identical recordings and redundant video clips
+            </Text>
+          </View>
+          <Icon name="chevron-right" size={22} color={theme.colors.textTertiary} />
+        </TouchableOpacity>
+
+        {/* Cleanup Review Center */}
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => navigation.navigate('CleanupReviewCenter')}
+          style={styles.dupCard}>
+          <View
+            style={[
+              styles.dupIcon,
+              {backgroundColor: 'rgba(99, 102, 241, 0.15)'},
+            ]}>
+            <Icon name="shield-star-outline" size={24} color="#6366F1" />
+          </View>
+          <View style={styles.dupInfo}>
+            <Text style={[theme.typography.titleSmall, {color: theme.colors.text}]}>
+              Cleanup Review Center
+            </Text>
+            <Text style={[theme.typography.bodySmall, {color: theme.colors.textSecondary}]}>
+              Priority-sorted review hub for high-impact space saving
             </Text>
           </View>
           <Icon name="chevron-right" size={22} color={theme.colors.textTertiary} />
@@ -663,6 +949,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 16,
   },
+  headerRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  queueBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    height: 40,
+    borderRadius: 14,
+    justifyContent: 'center',
+  },
   historyBtn: {
     width: 40,
     height: 40,
@@ -796,7 +1096,7 @@ const styles = StyleSheet.create({
     gap: 14,
     padding: 16,
     borderRadius: 18,
-    marginBottom: 24,
+    marginBottom: 12,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(91,95,239,0.25)',
   },
@@ -856,5 +1156,88 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
+  },
+  smartCleanupCard: {
+    borderRadius: 20,
+    marginBottom: 14,
+  },
+  smartCleanupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  healthCircleBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  healthScoreSmall: {
+    fontSize: 18,
+    fontWeight: '900',
+    lineHeight: 20,
+  },
+  healthScoreLabel: {
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  smartCleanupTextContainer: {
+    flex: 1,
+  },
+  healthStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  smartCleanupActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 12,
+  },
+  compactRecCard: {
+    borderRadius: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.3)',
+  },
+  compactRecRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  compactRecIconBox: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compactRecContent: {
+    flex: 1,
+  },
+  compactRecTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  compactRecSavingsPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  compactRecReviewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
   },
 });

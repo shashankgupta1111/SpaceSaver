@@ -23,6 +23,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {useInfiniteQuery, useQueryClient} from '@tanstack/react-query';
 import {CameraRoll, PhotoIdentifier} from '@react-native-camera-roll/camera-roll';
 import {PermissionService} from '../../shared/services/PermissionService';
+import {MediaService} from '../../shared/services/MediaService';
 
 import {useTheme} from '../../app/theme/ThemeContext';
 import {RootStackParamList} from '../../app/navigation/types';
@@ -223,31 +224,23 @@ export default function ImagesScreen() {
     const count = selectedUris.size;
     const uris = Array.from(selectedUris);
 
-    alert({
+    MediaService.requestDeleteWithConsent(uris, {
       title: `Delete ${count} ${count > 1 ? 'Images' : 'Image'}?`,
-      message: 'Selected file(s) will be permanently removed from your device gallery.',
-      type: 'warning',
-      icon: 'trash-can-outline',
-      buttons: [
-        {text: 'Cancel', style: 'cancel'},
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await CameraRoll.deletePhotos(uris);
-              setSelectedUris(new Set());
-              queryClient.invalidateQueries({queryKey: ['images']});
-            } catch (err) {
-              alert({
-                title: 'Delete Failed',
-                message: 'Could not delete selected files.',
-                type: 'error',
-              });
-            }
-          },
-        },
-      ],
+      message: 'Selected file(s) will be permanently removed from your gallery.',
+      alert,
+      onSuccess: () => {
+        setSelectedUris(new Set());
+        queryClient.invalidateQueries({queryKey: ['images']});
+        queryClient.invalidateQueries({queryKey: ['albums']});
+        queryClient.invalidateQueries({queryKey: ['largestMedia', 20]});
+      },
+      onError: () => {
+        alert({
+          title: 'Delete Cancelled',
+          message: 'Deletion was cancelled or not confirmed.',
+          type: 'info',
+        });
+      },
     });
   };
 

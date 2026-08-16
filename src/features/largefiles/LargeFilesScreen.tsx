@@ -18,6 +18,7 @@ import {useTheme} from '../../app/theme/ThemeContext';
 import {RootStackParamList} from '../../app/navigation/types';
 import {MediaService, LargeFile} from '../../shared/services/MediaService';
 import {StorageService} from '../../shared/services/StorageService';
+import {MediaQualityService} from '../../shared/services/MediaQualityService';
 import {useAlert} from '../../shared/components/AlertProvider';
 import HeaderBar from '../../shared/components/HeaderBar';
 import AnimatedButton from '../../shared/components/AnimatedButton';
@@ -139,37 +140,27 @@ export default function LargeFilesScreen() {
     if (uris.length === 0) {
       return;
     }
-    alert({
-      title: `Delete ${uris.length} file${uris.length > 1 ? 's' : ''}?`,
+    setDeleting(true);
+    MediaService.requestDeleteWithConsent(uris, {
+      title: `Delete ${uris.length} large file${uris.length > 1 ? 's' : ''}?`,
       message: `Frees ${StorageService.formatBytes(
         selectedBytes,
-      )}. Android will ask you to confirm removal.`,
-      type: 'warning',
-      icon: 'trash-can-outline',
-      buttons: [
-        {text: 'Cancel', style: 'cancel'},
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setDeleting(true);
-            try {
-              await MediaService.deleteAssets(uris);
-              setSelected(new Set());
-              setSelectedType(null);
-              queryClient.invalidateQueries({queryKey: ['largestMedia', TOP_N]});
-            } catch {
-              alert({
-                title: 'Delete failed',
-                message: 'Some files could not be removed.',
-                type: 'error',
-              });
-            } finally {
-              setDeleting(false);
-            }
-          },
-        },
-      ],
+      )}. Android will ask you to confirm deletion.`,
+      alert,
+      onSuccess: () => {
+        setSelected(new Set());
+        setSelectedType(null);
+        setDeleting(false);
+        queryClient.invalidateQueries({queryKey: ['largestMedia', TOP_N]});
+      },
+      onError: () => {
+        setDeleting(false);
+        alert({
+          title: 'Delete Cancelled',
+          message: 'Deletion was cancelled or some files could not be removed.',
+          type: 'info',
+        });
+      },
     });
   };
 
@@ -336,6 +327,8 @@ function LargeRow({
       ? `Video · ${formatDuration(file.playableDuration ?? 0)}`
       : `Photo · ${file.width}×${file.height}`;
 
+  const analysis = useMemo(() => MediaQualityService.analyzeMedia(file), [file]);
+
   return (
     <Animated.View entering={FadeInDown.delay(Math.min(rank, 12) * 30).springify()}>
       <TouchableOpacity
@@ -390,6 +383,18 @@ function LargeRow({
             style={[theme.typography.bodySmall, {color: theme.colors.textSecondary}]}>
             {meta}
           </Text>
+
+          {/* Contextual Recommendation Badge */}
+          {analysis.estimatedSavingsBytes > 10 * 1024 * 1024 ? (
+            <View style={[styles.recBadge, {backgroundColor: theme.colors.successContainer}]}>
+              <Icon name="lightning-bolt" size={11} color={theme.colors.success} />
+              <Text
+                style={[theme.typography.labelSmall, {color: theme.colors.success, fontWeight: '700', fontSize: 10}]}
+                numberOfLines={1}>
+                {analysis.recommendedAction} · Save ~{StorageService.formatBytes(analysis.estimatedSavingsBytes)}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.right}>
@@ -493,5 +498,15 @@ const styles = StyleSheet.create({
   footerActions: {
     flexDirection: 'row',
     gap: 10,
+  },
+  recBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
   },
 });

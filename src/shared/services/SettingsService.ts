@@ -4,6 +4,7 @@ import {CompressionOptions} from '../../app/navigation/types';
 const storage = new MMKV({id: 'settings-storage'});
 
 export type SaveOption = 'new' | 'replace' | 'ask';
+export type CleanupReminderFreq = 'off' | 'weekly' | 'monthly';
 
 export interface AppSettings {
   themeMode: 'light' | 'dark' | 'system';
@@ -11,8 +12,13 @@ export interface AppSettings {
   showNotifications: boolean;
   defaultImageOptions: Partial<CompressionOptions>;
   defaultVideoOptions: Partial<CompressionOptions>;
-  language: string;
-  hasSeenOnboarding: boolean;
+  hasConfirmedDeleteConsent: boolean;
+
+  // Phase 3: Cleanup Reminders & Automation
+  cleanupReminders: CleanupReminderFreq;
+  reminderThresholdBytes: number;
+  includeOldMedia: boolean;
+  includeScreenshots: boolean;
 }
 
 const DEFAULTS: AppSettings = {
@@ -21,7 +27,8 @@ const DEFAULTS: AppSettings = {
   showNotifications: true,
   defaultImageOptions: {
     compressionLevel: 'medium',
-    quality: 0.8,
+    quality: 0.75,
+    maxWidth: 1280,
     outputFormat: 'jpeg',
     keepMetadata: true,
   },
@@ -31,8 +38,13 @@ const DEFAULTS: AppSettings = {
     fps: 'original',
     videoCodec: 'h264',
   },
-  language: 'en',
-  hasSeenOnboarding: false,
+  hasConfirmedDeleteConsent: false,
+
+  // Phase 3 Defaults
+  cleanupReminders: 'weekly',
+  reminderThresholdBytes: 2 * 1024 * 1024 * 1024, // 2 GB
+  includeOldMedia: true,
+  includeScreenshots: true,
 };
 
 class SettingsServiceClass {

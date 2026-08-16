@@ -159,10 +159,7 @@ export default function CompressionSuccessScreen() {
         await CompressionService.moveToMediaStore(result.compressedUri, type);
       }
 
-      // 2. For "replace", remove the originals from the gallery. On Android 11+
-      //    this needs a MediaStore delete request (content:// URIs) which shows
-      //    a single system confirmation dialog for the whole batch — RNFS.unlink
-      //    cannot touch shared-storage media under scoped storage.
+      // 2. For "replace", remove the originals from the gallery.
       let deletedCount = 0;
       if (option === 'replace') {
         const originalUris = results
@@ -172,10 +169,10 @@ export default function CompressionSuccessScreen() {
           try {
             await CameraRoll.deletePhotos(originalUris);
             deletedCount = originalUris.length;
+            SettingsService.set('hasConfirmedDeleteConsent', true);
           } catch {
-            // User dismissed the system delete dialog, or deletion failed.
-            // The compressed copies are already saved, so fall through and
-            // report that the originals were kept.
+            // User dismissed/rejected the OS delete dialog
+            SettingsService.set('hasConfirmedDeleteConsent', false);
           }
         }
       }

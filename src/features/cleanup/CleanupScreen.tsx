@@ -101,12 +101,16 @@ export default function CleanupScreen() {
             <AlbumRow
               album={item}
               index={index}
-              onPress={() =>
-                navigation.navigate('AlbumDetail', {
-                  albumTitle: item.title,
-                  assetType: 'All',
-                })
-              }
+              onPress={() => {
+                if (item.title.toLowerCase().includes('screenshot')) {
+                  navigation.navigate('ScreenshotManager');
+                } else {
+                  navigation.navigate('AlbumDetail', {
+                    albumTitle: item.title,
+                    assetType: 'All',
+                  });
+                }
+              }}
             />
           )}
         />

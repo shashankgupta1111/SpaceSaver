@@ -21,6 +21,8 @@ import {RootStackParamList, CompressionOptions} from '../../app/navigation/types
 import {StorageService} from '../../shared/services/StorageService';
 import {CompressionService} from '../../shared/services/CompressionService';
 import {SettingsService} from '../../shared/services/SettingsService';
+import {CompressionQueueService} from '../../shared/services/CompressionQueueService';
+import {useAlert} from '../../shared/components/AlertProvider';
 import HeaderBar from '../../shared/components/HeaderBar';
 import Card from '../../shared/components/Card';
 import AnimatedButton from '../../shared/components/AnimatedButton';
@@ -126,14 +128,39 @@ export default function ImageCompressionScreen() {
     }));
   };
 
-  const totalOriginalSize = selectedUris.length * 3 * 1024 * 1024;
+  const [actualTotalBytes, setActualTotalBytes] = useState<number>(
+    selectedUris.length * 3.2 * 1024 * 1024,
+  );
+
+  React.useEffect(() => {
+    // Attempt to calculate precise aggregate size of selected photos
+    let isMounted = true;
+    Promise.all(selectedUris.map(uri => StorageService.getFileSize(uri)))
+      .then(sizes => {
+        if (!isMounted) return;
+        const total = sizes.reduce((sum, s) => sum + s, 0);
+        if (total > 0) {
+          setActualTotalBytes(total);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedUris]);
+
   const estimatedSize = CompressionService.estimateCompressedSize(
-    totalOriginalSize,
+    actualTotalBytes,
     options,
     'image',
   );
-  const estimatedSavings = totalOriginalSize - estimatedSize;
-  const estimatedPercent = Math.round((estimatedSavings / totalOriginalSize) * 100);
+  const estimatedSavings = Math.max(0, actualTotalBytes - estimatedSize);
+  const estimatedPercent =
+    actualTotalBytes > 0
+      ? Math.round((estimatedSavings / actualTotalBytes) * 100)
+      : 0;
+
+  const alert = useAlert();
 
   const handleCompress = () => {
     // Remember these choices for next time.
@@ -142,6 +169,25 @@ export default function ImageCompressionScreen() {
       type: 'image',
       uris: selectedUris,
       options,
+    });
+  };
+
+  const handleAddToQueue = () => {
+    SettingsService.set('defaultImageOptions', options);
+    const jobName = `${selectedUris.length} Photo${selectedUris.length > 1 ? 's' : ''}`;
+    CompressionQueueService.addJob(jobName, 'image', selectedUris, options, actualTotalBytes, true);
+    alert({
+      title: 'Added to Queue',
+      message: `${selectedUris.length} photo${selectedUris.length > 1 ? 's' : ''} added to the background compression queue.`,
+      type: 'success',
+      icon: 'tray-arrow-down',
+      buttons: [
+        {
+          text: 'View Queue',
+          onPress: () => navigation.navigate('CompressionQueue'),
+        },
+        {text: 'OK', style: 'cancel'},
+      ],
     });
   };
 
@@ -506,63 +552,61 @@ export default function ImageCompressionScreen() {
           </Card>
         </Animated.View>
 
-        {/* Estimate */}
+        {/* Compression Savings Calculator Card */}
         <Animated.View entering={FadeInDown.delay(350).springify()}>
           <Card
             style={[
               styles.estimateCard,
-              {backgroundColor: theme.colors.primaryContainer},
-            ]}
-            variant="filled">
-            <View style={styles.estimateRow}>
-              <View style={styles.estimateItem}>
-                <Text
-                  style={[
-                    theme.typography.bodySmall,
-                    {color: theme.colors.onPrimaryContainer, opacity: 0.7},
-                  ]}>
-                  Est. Output
-                </Text>
-                <Text
-                  style={[
-                    theme.typography.numericSmall,
-                    {color: theme.colors.onPrimaryContainer},
-                  ]}>
-                  {StorageService.formatBytes(estimatedSize)}
+              {backgroundColor: theme.colors.surfaceVariant, borderWidth: 1, borderColor: theme.colors.borderLight},
+            ]}>
+            <View style={styles.calculatorHeader}>
+              <View style={styles.calculatorTitleRow}>
+                <Icon name="calculator-variant-outline" size={20} color={theme.colors.primary} />
+                <Text style={[theme.typography.titleSmall, {color: theme.colors.text, fontWeight: '700'}]}>
+                  Compression Savings Calculator
                 </Text>
               </View>
-              <View
-                style={[styles.estimateDivider, {backgroundColor: theme.colors.primary, opacity: 0.2}]}
-              />
-              <View style={styles.estimateItem}>
-                <Text
-                  style={[
-                    theme.typography.bodySmall,
-                    {color: theme.colors.onPrimaryContainer, opacity: 0.7},
-                  ]}>
-                  Estimated Savings
-                </Text>
-                <Text
-                  style={[
-                    theme.typography.numericSmall,
-                    {color: theme.colors.primary, fontWeight: '700'},
-                  ]}>
-                  ~{estimatedPercent}% · {StorageService.formatBytes(estimatedSavings)}
+              <View style={[styles.estimateBadge, {backgroundColor: theme.colors.primaryContainer}]}>
+                <Text style={[theme.typography.labelSmall, {color: theme.colors.primary, fontWeight: '700'}]}>
+                  ESTIMATED
                 </Text>
               </View>
             </View>
+
+            <View style={styles.calculatorGrid}>
+              <View style={styles.calculatorCol}>
+                <Text style={[theme.typography.labelSmall, {color: theme.colors.textSecondary}]}>Current Size</Text>
+                <Text style={[theme.typography.titleSmall, {color: theme.colors.text, fontWeight: '700', marginTop: 2}]}>
+                  {StorageService.formatBytes(actualTotalBytes)}
+                </Text>
+              </View>
+              <Icon name="arrow-right" size={16} color={theme.colors.textTertiary} />
+              <View style={styles.calculatorCol}>
+                <Text style={[theme.typography.labelSmall, {color: theme.colors.textSecondary}]}>Est. Output</Text>
+                <Text style={[theme.typography.titleSmall, {color: theme.colors.primary, fontWeight: '700', marginTop: 2}]}>
+                  {StorageService.formatBytes(estimatedSize)}
+                </Text>
+              </View>
+              <View style={[styles.calculatorCol, styles.calculatorSavingsCol]}>
+                <Text style={[theme.typography.labelSmall, {color: theme.colors.success}]}>Est. Savings</Text>
+                <Text style={[theme.typography.titleSmall, {color: theme.colors.success, fontWeight: '800', marginTop: 2}]}>
+                  ~{StorageService.formatBytes(estimatedSavings)} ({estimatedPercent}%)
+                </Text>
+              </View>
+            </View>
+
             <Text
               style={[
                 theme.typography.bodySmall,
-                {color: theme.colors.onPrimaryContainer, opacity: 0.6, marginTop: 8, textAlign: 'center'},
+                {color: theme.colors.textTertiary, opacity: 0.8, marginTop: 10, textAlign: 'center', fontSize: 11},
               ]}>
-              Actual results may vary
+              * Estimated savings based on {options.mode === 'convert' ? 'lossless conversion' : `${qualityPercent}% quality`}. Actual savings calculated after compression.
             </Text>
           </Card>
         </Animated.View>
       </ScrollView>
 
-      {/* Action button */}
+      {/* Action buttons */}
       <View
         style={[
           styles.footer,
@@ -572,21 +616,34 @@ export default function ImageCompressionScreen() {
             borderTopColor: theme.colors.borderLight,
           },
         ]}>
-        <AnimatedButton
-          onPress={handleCompress}
-          variant="primary"
-          size="lg"
-          gradient
-          fullWidth>
-          <Icon
-            name={mode === 'convert' ? 'swap-horizontal' : 'zip-box'}
-            size={20}
-            color="white"
-          />
-          <Text style={[theme.typography.titleSmall, {color: 'white'}]}>
-            {mode === 'convert' ? 'Convert Format' : 'Start Compression'}
-          </Text>
-        </AnimatedButton>
+        <View style={styles.footerButtonsRow}>
+          <TouchableOpacity
+            style={[styles.queueButton, {backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.border}]}
+            onPress={handleAddToQueue}>
+            <Icon name="tray-arrow-down" size={18} color={theme.colors.text} />
+            <Text style={[theme.typography.labelMedium, {color: theme.colors.text, fontWeight: '700'}]}>
+              Queue
+            </Text>
+          </TouchableOpacity>
+
+          <View style={{flex: 1}}>
+            <AnimatedButton
+              onPress={handleCompress}
+              variant="primary"
+              size="lg"
+              gradient
+              fullWidth>
+              <Icon
+                name={mode === 'convert' ? 'swap-horizontal' : 'zip-box'}
+                size={20}
+                color="white"
+              />
+              <Text style={[theme.typography.titleSmall, {color: 'white'}]}>
+                {mode === 'convert' ? 'Convert' : 'Start'}
+              </Text>
+            </AnimatedButton>
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -670,20 +727,55 @@ const styles = StyleSheet.create({
   estimateCard: {
     marginHorizontal: 20,
     marginBottom: 10,
+    borderRadius: 20,
+    padding: 16,
   },
-  estimateRow: {
+  calculatorHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    justifyContent: 'space-between',
+    marginBottom: 14,
   },
-  estimateItem: {flex: 1, gap: 2},
-  estimateDivider: {
-    width: 1,
-    height: 40,
+  calculatorTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  estimateBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  calculatorGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  calculatorCol: {
+    flex: 1,
+  },
+  calculatorSavingsCol: {
+    flex: 1.2,
+    alignItems: 'flex-end',
   },
   footer: {
     paddingHorizontal: 20,
     paddingTop: 16,
     borderTopWidth: 0.5,
+  },
+  footerButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  queueButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 52,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    borderWidth: 1.5,
   },
 });

@@ -16,6 +16,13 @@ import InsightsScreen from '../../features/insights/InsightsScreen';
 import CleanupScreen from '../../features/cleanup/CleanupScreen';
 import AlbumDetailScreen from '../../features/cleanup/AlbumDetailScreen';
 import FormatConverterScreen from '../../features/converter/FormatConverterScreen';
+import SmartCleanupScreen from '../../features/cleanup/SmartCleanupScreen';
+import ScreenshotManagerScreen from '../../features/cleanup/ScreenshotManagerScreen';
+import OldMediaScreen from '../../features/cleanup/OldMediaScreen';
+import CompressionQueueScreen from '../../features/compression/CompressionQueueScreen';
+import SmartRecommendationsScreen from '../../features/cleanup/SmartRecommendationsScreen';
+import VideoDuplicatesScreen from '../../features/duplicates/VideoDuplicatesScreen';
+import CleanupReviewCenterScreen from '../../features/cleanup/CleanupReviewCenterScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -108,6 +115,41 @@ export default function RootNavigator() {
         <Stack.Screen
           name="FormatConverter"
           component={FormatConverterScreen}
+          options={{animation: 'slide_from_right'}}
+        />
+        <Stack.Screen
+          name="SmartCleanup"
+          component={SmartCleanupScreen}
+          options={{animation: 'slide_from_right'}}
+        />
+        <Stack.Screen
+          name="ScreenshotManager"
+          component={ScreenshotManagerScreen}
+          options={{animation: 'slide_from_right'}}
+        />
+        <Stack.Screen
+          name="OldMedia"
+          component={OldMediaScreen}
+          options={{animation: 'slide_from_right'}}
+        />
+        <Stack.Screen
+          name="CompressionQueue"
+          component={CompressionQueueScreen}
+          options={{animation: 'slide_from_right'}}
+        />
+        <Stack.Screen
+          name="SmartRecommendations"
+          component={SmartRecommendationsScreen}
+          options={{animation: 'slide_from_right'}}
+        />
+        <Stack.Screen
+          name="VideoDuplicates"
+          component={VideoDuplicatesScreen}
+          options={{animation: 'slide_from_right'}}
+        />
+        <Stack.Screen
+          name="CleanupReviewCenter"
+          component={CleanupReviewCenterScreen}
           options={{animation: 'slide_from_right'}}
         />
       </Stack.Navigator>

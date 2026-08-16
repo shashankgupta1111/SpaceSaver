@@ -1,5 +1,7 @@
 import {CameraRoll, PhotoIdentifier} from '@react-native-camera-roll/camera-roll';
 import {PermissionService} from './PermissionService';
+import {SettingsService} from './SettingsService';
+import {AlertConfig} from '../components/AlertProvider';
 
 export interface LargeFile {
   uri: string;
@@ -109,6 +111,74 @@ class MediaServiceClass {
     await CameraRoll.deletePhotos(uris);
   }
 
+  /**
+   * Deletes gallery assets with smart one-time in-app confirmation.
+   * If consent was previously granted, directly invokes the native Android deletion request.
+   * If the user approves Android's OS deletion dialog, consent is maintained.
+   * If the user cancels/rejects in-app or rejects Android's OS dialog, consent is reset so they are asked again next time.
+   */
+  async requestDeleteWithConsent(
+    uris: string[],
+    options: {
+      title?: string;
+      message?: string;
+      alert: (cfg: AlertConfig) => void;
+      onSuccess: () => void;
+      onError?: (err: unknown) => void;
+    },
+  ): Promise<void> {
+    if (uris.length === 0) return;
+
+    const executeDeletion = async () => {
+      try {
+        await CameraRoll.deletePhotos(uris);
+        // Deletion confirmed in Android OS dialog
+        SettingsService.set('hasConfirmedDeleteConsent', true);
+        options.onSuccess();
+      } catch (err) {
+        // User cancelled / dismissed Android OS dialog or deletion failed
+        SettingsService.set('hasConfirmedDeleteConsent', false);
+        if (options.onError) {
+          options.onError(err);
+        }
+      }
+    };
+
+    const hasConsent = SettingsService.get('hasConfirmedDeleteConsent');
+
+    if (hasConsent) {
+      // Direct deletion request via Android MediaStore (no extra in-app alert)
+      await executeDeletion();
+    } else {
+      // Prompt one-time in-app confirmation
+      const count = uris.length;
+      options.alert({
+        title: options.title ?? `Delete ${count} item${count > 1 ? 's' : ''}?`,
+        message:
+          options.message ??
+          'Selected item(s) will be permanently deleted from your device gallery.',
+        type: 'warning',
+        icon: 'trash-can-outline',
+        buttons: [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => {
+              SettingsService.set('hasConfirmedDeleteConsent', false);
+            },
+          },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              await executeDeletion();
+            },
+          },
+        ],
+      });
+    }
+  }
+
   /** Media inside a specific album/bucket, sorted by size descending. */
   async getAlbumMedia(title: string, limit = 300): Promise<LargeFile[]> {
     const res = await CameraRoll.getPhotos({
@@ -122,6 +192,23 @@ class MediaServiceClass {
     return res
       .map(e => this.toFile(e, this.inferType(e)))
       .sort((a, b) => b.fileSize - a.fileSize);
+  }
+
+  /** Retrieve library media items by assetType, sorted by size. */
+  async getAllMedia(
+    limit = 1000,
+    assetType: 'All' | 'Photos' | 'Videos' = 'All',
+  ): Promise<LargeFile[]> {
+    const res = await CameraRoll.getPhotos({
+      first: limit,
+      assetType,
+      include: ['fileSize', 'filename', 'imageSize', 'playableDuration'],
+    })
+      .then(r => r.edges)
+      .catch(() => [] as PhotoIdentifier[]);
+    return res
+      .map(e => this.toFile(e, this.inferType(e)))
+      .sort((a, b) => (b.fileSize || 0) - (a.fileSize || 0));
   }
 }
 

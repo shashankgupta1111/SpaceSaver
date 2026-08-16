@@ -29,6 +29,13 @@ export type RootStackParamList = {
   Cleanup: undefined;
   AlbumDetail: {albumTitle: string; assetType: 'Photos' | 'Videos' | 'All'};
   FormatConverter: {selectedUris?: string[]; mediaType?: 'image' | 'video'} | undefined;
+  SmartCleanup: undefined;
+  ScreenshotManager: undefined;
+  OldMedia: undefined;
+  CompressionQueue: undefined;
+  SmartRecommendations: undefined;
+  VideoDuplicates: undefined;
+  CleanupReviewCenter: undefined;
 };
 
 export interface CompressionOptions {

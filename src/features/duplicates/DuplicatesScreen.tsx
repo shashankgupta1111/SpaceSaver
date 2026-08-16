@@ -10,7 +10,11 @@ import {
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import Animated, {FadeInDown, FadeIn} from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import {useNavigation} from '@react-navigation/native';
+import {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import {RootStackParamList} from '../../app/navigation/types';
 import {PermissionService} from '../../shared/services/PermissionService';
+import {MediaService} from '../../shared/services/MediaService';
 
 import {useTheme} from '../../app/theme/ThemeContext';
 import {StorageService} from '../../shared/services/StorageService';
@@ -80,15 +84,17 @@ export default function DuplicatesScreen() {
       const res = await DuplicateService.scan((done, total) =>
         setProgress({done, total}),
       );
-      // Pre-select every non-keeper photo ("keep best, delete rest").
+      // Pre-select non-keepers ONLY for high-confidence exact duplicates.
       const preselect = new Set<string>();
-      res.groups.forEach(g =>
-        g.photos.forEach(p => {
-          if (p.uri !== g.keeperUri) {
-            preselect.add(p.uri);
-          }
-        }),
-      );
+      res.groups.forEach(g => {
+        if (g.confidence === 'high') {
+          g.photos.forEach(p => {
+            if (p.uri !== g.keeperUri) {
+              preselect.add(p.uri);
+            }
+          });
+        }
+      });
       setResult(res);
       setToDelete(preselect);
       setPhase('results');
@@ -119,62 +125,52 @@ export default function DuplicatesScreen() {
     if (uris.length === 0) {
       return;
     }
-    alert({
-      title: `Delete ${uris.length} photo${uris.length > 1 ? 's' : ''}?`,
+
+    setDeleting(true);
+    MediaService.requestDeleteWithConsent(uris, {
+      title: `Delete ${uris.length} duplicate photo${uris.length > 1 ? 's' : ''}?`,
       message: `This frees ${StorageService.formatBytes(
         selectedBytes,
       )}. Android will ask you to confirm removal from your gallery.`,
-      type: 'warning',
-      icon: 'trash-can-outline',
-      buttons: [
-        {text: 'Cancel', style: 'cancel'},
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setDeleting(true);
-            try {
-              await DuplicateService.deletePhotos(uris);
-              // Drop deleted photos and collapse groups that no longer have dupes.
-              setResult(prev => {
-                if (!prev) {
-                  return prev;
-                }
-                const groups = prev.groups
-                  .map(g => ({
-                    ...g,
-                    photos: g.photos.filter(p => !toDelete.has(p.uri)),
-                  }))
-                  .filter(g => g.photos.length >= 2)
-                  .map(g => rebuildGroup(g));
-                return {
-                  ...prev,
-                  groups,
-                  totalReclaimable: groups.reduce(
-                    (s, g) => s + g.reclaimable,
-                    0,
-                  ),
-                };
-              });
-              setToDelete(new Set());
-              alert({
-                title: 'Cleaned up!',
-                message: `Freed ${StorageService.formatBytes(selectedBytes)}.`,
-                type: 'success',
-              });
-            } catch {
-              alert({
-                title: 'Delete failed',
-                message:
-                  'Some photos could not be removed. They may be protected or already gone.',
-                type: 'error',
-              });
-            } finally {
-              setDeleting(false);
-            }
-          },
-        },
-      ],
+      alert,
+      onSuccess: () => {
+        // Drop deleted photos and collapse groups that no longer have dupes.
+        setResult(prev => {
+          if (!prev) {
+            return prev;
+          }
+          const groups = prev.groups
+            .map(g => ({
+              ...g,
+              photos: g.photos.filter(p => !toDelete.has(p.uri)),
+            }))
+            .filter(g => g.photos.length >= 2)
+            .map(g => rebuildGroup(g));
+          return {
+            ...prev,
+            groups,
+            totalReclaimable: groups.reduce(
+              (s, g) => s + g.reclaimable,
+              0,
+            ),
+          };
+        });
+        setToDelete(new Set());
+        setDeleting(false);
+        alert({
+          title: 'Cleaned up!',
+          message: `Freed ${StorageService.formatBytes(selectedBytes)}.`,
+          type: 'success',
+        });
+      },
+      onError: () => {
+        setDeleting(false);
+        alert({
+          title: 'Delete Cancelled',
+          message: 'Photos were not removed.',
+          type: 'info',
+        });
+      },
     });
   }, [toDelete, selectedBytes, alert]);
 
@@ -379,6 +375,8 @@ function ResultsState({
 }) {
   const {theme} = useTheme();
 
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
   if (result.groups.length === 0) {
     return (
       <View style={styles.centered}>
@@ -394,7 +392,7 @@ function ResultsState({
             theme.typography.titleLarge,
             {color: theme.colors.text, marginTop: 24, textAlign: 'center'},
           ]}>
-          No duplicates found
+          No duplicate photos found
         </Text>
         <Text
           style={[
@@ -406,8 +404,17 @@ function ResultsState({
               paddingHorizontal: 32,
             },
           ]}>
-          Your gallery is already tidy. Nice work!
+          Your photo gallery is already clean!
         </Text>
+
+        <TouchableOpacity
+          style={[styles.videoDupeShortcut, {backgroundColor: theme.colors.surfaceVariant}]}
+          onPress={() => navigation.navigate('VideoDuplicates')}>
+          <Icon name="video-vintage" size={20} color={theme.colors.primary} />
+          <Text style={[theme.typography.labelMedium, {color: theme.colors.primary, fontWeight: '700'}]}>
+            Scan for Video Duplicates →
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -423,12 +430,14 @@ function ResultsState({
             {StorageService.formatBytes(result.totalReclaimable)}
           </Text>
         </Text>
-        {!result.perceptual && (
-          <Text
-            style={[theme.typography.bodySmall, {color: theme.colors.warning}]}>
-            Exact-match only
+        <TouchableOpacity
+          onPress={() => navigation.navigate('VideoDuplicates')}
+          style={[styles.videoShortcutPill, {backgroundColor: theme.colors.primaryContainer}]}>
+          <Icon name="video-vintage" size={14} color={theme.colors.primary} />
+          <Text style={[theme.typography.labelSmall, {color: theme.colors.primary, fontWeight: '700'}]}>
+            Video Duplicates
           </Text>
-        )}
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -491,8 +500,8 @@ function GroupCard({
   onToggle: (uri: string) => void;
   onPreview: (items: MediaPreviewItem[], index: number) => void;
 }) {
-  const {theme} = useTheme();
-  const isExact = group.kind === 'exact';
+  const {theme, isDark} = useTheme();
+  const isExact = group.confidence === 'high';
 
   const previewItems: MediaPreviewItem[] = group.photos.map(p => ({
     uri: p.uri,
@@ -533,13 +542,40 @@ function GroupCard({
                 fontWeight: '700',
               },
             ]}>
-            {isExact ? 'Exact copy' : 'Similar'} · {group.photos.length}
+            {group.confidenceLabel || (isExact ? 'Exact copy' : 'Similar')} · {group.photos.length}
           </Text>
         </View>
         <Text style={[theme.typography.labelMedium, {color: theme.colors.textSecondary}]}>
           Reclaim {StorageService.formatBytes(group.reclaimable)}
         </Text>
       </View>
+
+      {/* Keeper Recommendation Explanation Box */}
+      {group.keeperReason ? (
+        <View
+          style={[
+            styles.keeperExplainCard,
+            {
+              backgroundColor: isDark ? 'rgba(34, 197, 94, 0.12)' : 'rgba(34, 197, 94, 0.08)',
+              borderColor: isDark ? 'rgba(34, 197, 94, 0.3)' : 'rgba(34, 197, 94, 0.25)',
+            },
+          ]}>
+          <View style={styles.keeperExplainHeader}>
+            <Icon name="star-circle" size={15} color={theme.colors.success} />
+            <Text style={[theme.typography.labelSmall, {color: theme.colors.success, fontWeight: '800'}]}>
+              KEEPER RECOMMENDATION
+            </Text>
+          </View>
+          <Text style={[theme.typography.bodySmall, {color: theme.colors.text, fontWeight: '600', marginTop: 2}]}>
+            {group.keeperReason}
+          </Text>
+          {group.otherCopiesSummary ? (
+            <Text style={[theme.typography.bodySmall, {color: theme.colors.textSecondary, marginTop: 2}]}>
+              Other copies: {group.otherCopiesSummary}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
 
       <ScrollView
         horizontal
@@ -757,5 +793,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
     borderTopWidth: 0.5,
+  },
+  videoDupeShortcut: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  videoShortcutPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  keeperExplainCard: {
+    marginBottom: 12,
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  keeperExplainHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
 });

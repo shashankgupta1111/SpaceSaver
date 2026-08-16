@@ -149,7 +149,7 @@ export default function FormatConverterScreen() {
               theme.typography.bodySmall,
               {color: theme.colors.primary, fontWeight: '600'},
             ]}>
-            ✨ 100% Quality Preserved
+            ✨ Maximum Quality Preserved
           </Text>
         </View>
       </View>
@@ -349,10 +349,10 @@ export default function FormatConverterScreen() {
           <Icon name="shield-check" size={24} color={theme.colors.success} />
           <View style={styles.guaranteeTextContainer}>
             <Text style={[theme.typography.titleSmall, {color: theme.colors.success, fontWeight: '700'}]}>
-              100% Quality Preservation Guarantee
+              High-Fidelity Quality Preservation
             </Text>
             <Text style={[theme.typography.bodySmall, {color: theme.colors.text, opacity: 0.85}]}>
-              Format Converter changes file containers without reducing resolution, bitrate, or visual quality.
+              Preserves original media quality whenever technically possible. Container remuxing maintains original streams; when transcoding is required, maximum bitrate and resolution are preserved.
             </Text>
           </View>
         </View>
